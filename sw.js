@@ -1,4 +1,4 @@
-const CACHE_NAME = "diet-app-dev-annotations1";
+const CACHE_NAME = "diet-app-dev-annotations2";
 const APP_SHELL = [
   "/",
   "/index.html",

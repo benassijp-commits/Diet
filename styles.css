@@ -522,6 +522,16 @@ progress {
   min-width: 160px;
 }
 
+.diet-main > .toolbar .compact-select {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.diet-main > .toolbar .compact-select select {
+  width: 100%;
+  min-width: 0;
+}
+
 .alerts-toggle {
   position: relative;
   min-width: 52px;
@@ -2079,6 +2089,7 @@ button svg,
   z-index: 20;
   max-height: calc(100vh - var(--desktop-sticky-gap));
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
   align-items: stretch;
   flex-direction: column;
@@ -2096,6 +2107,16 @@ button svg,
 
 .diet-main > .toolbar .toggle-control {
   grid-column: 1 / -1;
+}
+
+.diet-main > .toolbar .compact-select {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.diet-main > .toolbar .compact-select select {
+  width: 100%;
+  min-width: 0;
 }
 
 .diet-main > .toolbar .secondary-button,

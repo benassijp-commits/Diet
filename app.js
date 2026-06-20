@@ -414,6 +414,23 @@ function allStockItems() {
   return Object.values(state.stockItems).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function dietStockItemIds() {
+  const ids = new Set();
+  for (const meal of getMeals()) {
+    for (const option of getOptionKeys(meal)) {
+      for (const item of meal.options[option] || []) {
+        if (item.stockItemId) ids.add(item.stockItemId);
+      }
+    }
+  }
+  return ids;
+}
+
+function visibleStockItems() {
+  const dietIds = dietStockItemIds();
+  return allStockItems().filter((item) => dietIds.has(item.id) || getStockQty(item.id) > 0);
+}
+
 function getStockQty(stockItemId) {
   return Math.max(0, Number(state.stock[stockItemId] || 0));
 }
@@ -944,7 +961,10 @@ function renderStockOptions() {
   for (const select of selects) {
     const current = select.value;
     const addNew = select.id === "stockEditorSelect" ? '<option value="__new">Novo ingrediente</option>' : "";
-    select.innerHTML = addNew + allStockItems()
+    const query = select.id === "stockItem" ? normalizeText(document.getElementById("stockItemQuery")?.value || "") : "";
+    const stockItems = allStockItems().filter((item) => !query || normalizeText(`${item.name} ${(item.aliases || []).join(" ")}`).includes(query));
+    const nutritionItems = select.id === "stockItem" ? nutritionStockOptions(query) : [];
+    select.innerHTML = addNew + [...stockItems, ...nutritionItems]
       .map((item) => `<option value="${item.id}">${item.name} (${item.unit})</option>`)
       .join("");
     if ([...select.options].some((option) => option.value === current)) {
@@ -953,10 +973,28 @@ function renderStockOptions() {
   }
 }
 
+function nutritionStockOptions(query) {
+  if (!nutritionBase?.items?.length) return [];
+  const knownNames = new Set(allStockItems().map((item) => normalizeText(item.name)));
+  return nutritionBase.items
+    .filter((item) => !knownNames.has(normalizeText(displayNutritionName(item))))
+    .filter((item) => {
+      if (!query) return false;
+      return normalizeText(`${item.names?.nl || ""} ${item.names?.pt || ""} ${item.names?.en || ""} ${(item.aliases || []).join(" ")}`).includes(query);
+    })
+    .slice(0, 60)
+    .map((item) => ({
+      id: `nutrition:${item.id}`,
+      name: displayNutritionName(item),
+      unit: item.referenceAmount?.unit || "g",
+    }));
+}
+
 function renderStock() {
   const tbody = document.getElementById("stockTable");
   const weeklyRows = aggregate(getMealItemsForPlan());
-  tbody.innerHTML = allStockItems()
+  const items = visibleStockItems();
+  tbody.innerHTML = items.length ? items
     .map((item) => {
       const qty = getStockQty(item.id);
       const weeklyNeed = weeklyRows.find((row) => row.stockItemId === item.id)?.qty || 0;
@@ -970,22 +1008,17 @@ function renderStock() {
           ? `${formatCurrency(unitPrice)} / ${formatQty(packageQty)} ${basis}`
           : `${formatCurrency(unitPrice)} / ${basis}`
         : "-";
-      const nutrition = item.nutrition || {};
-      const macrosLabel = nutrition.kcal
-        ? `${formatQty(nutrition.kcal)} kcal | P ${formatQty(nutrition.protein)} C ${formatQty(nutrition.carbs)} G ${formatQty(nutrition.fat)}`
-        : "-";
       return `
         <tr>
           <td data-label="Ingrediente">${item.name}</td>
           <td data-label="Estoque"><strong>${formatQty(qty)}</strong></td>
           <td data-label="Unidade">${item.unit}</td>
-          <td data-label="Macros">${macrosLabel}</td>
           <td data-label="Preco">${priceLabel}</td>
           <td data-label="Status"><span class="status-pill ${status.className}">${status.label}</span></td>
         </tr>
       `;
     })
-    .join("");
+    .join("") : '<tr><td colspan="5" class="empty-state">Nenhum ingrediente em estoque ou na dieta ativa.</td></tr>';
 }
 
 function renderStockEditor() {
@@ -1658,7 +1691,6 @@ function toggleAlertsPopover() {
   popover.hidden = nextHidden;
   toggle.setAttribute("aria-expanded", String(!nextHidden));
 }
-}
 
 async function loadNutritionBase() {
   if (nutritionBase) return nutritionBase;
@@ -1712,14 +1744,18 @@ function displayNutritionName(item) {
 function addNutritionItemToStock(nutritionId) {
   const item = nutritionBase?.items?.find((current) => current.id === nutritionId);
   if (!item) return;
+  upsertStockItemFromNutrition(item);
+  toast("Ingrediente salvo no estoque.");
+  render();
+}
+
+function upsertStockItemFromNutrition(item) {
   const name = displayNutritionName(item);
   const existing = Object.values(state.stockItems).find((stockItem) => normalizeText(stockItem.name) === normalizeText(name));
   if (existing) {
     existing.nutrition = { ...(existing.nutrition || {}), ...(item.nutrition || {}) };
     existing.nutritionSource = item.source;
-    toast("Ingrediente atualizado com dados nutricionais.");
-    render();
-    return;
+    return existing.id;
   }
   const id = createStockItemId(name);
   state.stockItems[id] = {
@@ -1730,8 +1766,14 @@ function addNutritionItemToStock(nutritionId) {
     nutritionSource: item.source,
     aliases: item.aliases || [],
   };
-  toast("Ingrediente adicionado ao estoque.");
-  render();
+  return id;
+}
+
+function resolveStockItemSelection(value) {
+  if (!value?.startsWith?.("nutrition:")) return value;
+  const nutritionId = value.slice("nutrition:".length);
+  const item = nutritionBase?.items?.find((current) => current.id === nutritionId);
+  return item ? upsertStockItemFromNutrition(item) : "";
 }
 
 function openDietImportModal() {
@@ -1807,7 +1849,7 @@ function createManualDietVersion() {
     previousActive.archivedAt = today;
     previousActive.meals = clone(state.meals);
   }
-  const meals = clone(state.meals);
+  const meals = [];
   const id = `diet_${Date.now()}`;
   state.dietVersions.push({
     id,
@@ -1816,10 +1858,14 @@ function createManualDietVersion() {
     activatedAt: today,
     archivedAt: "",
     source: "manual",
-    notes: "Criada manualmente a partir da dieta atual.",
+    notes: "Criada manualmente em branco.",
     meals,
   });
   state.activeDietVersionId = id;
+  state.meals = meals;
+  state.selections = {};
+  state.shoppingCart = {};
+  state.collapsedMeals = {};
   render();
   toast("Nova dieta criada.");
 }
@@ -2005,14 +2051,36 @@ document.getElementById("copyShopping").addEventListener("click", async () => {
 
 document.getElementById("stockForm").addEventListener("submit", (event) => {
   event.preventDefault();
-  const stockItemId = document.getElementById("stockItem").value;
+  const stockItemId = resolveStockItemSelection(document.getElementById("stockItem").value);
   const qty = Number(document.getElementById("stockQty").value);
   const type = document.getElementById("stockType").value;
-  if (!qty) return;
+  if (!stockItemId || !qty) return;
   const registered = registerStock([{ stockItemId, name: labelForStockItem(stockItemId), qty, unit: unitForStockItem(stockItemId) }], type, "Registro manual");
   if (!registered) return;
-  event.target.reset();
+  document.getElementById("stockQty").value = "";
+  renderStockOptions();
   toast("Movimento manual registrado.");
+});
+
+document.getElementById("stockItemQuery")?.addEventListener("input", async () => {
+  if (!nutritionBase) {
+    try {
+      await loadNutritionBase();
+    } catch {
+      // A lista de estoque local continua funcionando mesmo se a base nutricional falhar.
+    }
+  }
+  renderStockOptions();
+});
+
+document.getElementById("stockItem")?.addEventListener("focus", async () => {
+  if (nutritionBase || !document.getElementById("stockItemQuery")?.value) return;
+  try {
+    await loadNutritionBase();
+    renderStockOptions();
+  } catch {
+    // Mantem o seletor local se o catalogo nutricional nao carregar.
+  }
 });
 
 document.getElementById("clearLog").addEventListener("click", () => {
@@ -2229,7 +2297,7 @@ window.addEventListener("load", refreshIcons);
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js?v=dev-annotations1").catch((error) => {
+    navigator.serviceWorker.register("/sw.js?v=dev-annotations2").catch((error) => {
       console.warn("Service worker registration failed", error);
     });
   });
