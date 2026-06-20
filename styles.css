@@ -179,7 +179,8 @@ h4 {
 }
 
 .water-control div {
-  display: flex;
+  display: grid;
+  grid-template-columns: 34px minmax(64px, 1fr) 34px;
   align-items: center;
   gap: 8px;
 }
@@ -500,6 +501,58 @@ progress {
 
 .compact-table {
   max-height: 420px;
+}
+
+.mini-button {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.compact-select {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.compact-select select {
+  min-width: 160px;
+}
+
+.alerts-toggle {
+  position: relative;
+  min-width: 52px;
+}
+
+.alerts-popover {
+  position: absolute;
+  z-index: 30;
+  top: 72px;
+  right: 24px;
+  width: min(380px, calc(100vw - 32px));
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
+  padding: 14px;
+}
+
+.alerts-popover h4 {
+  margin: 0 0 10px;
+}
+
+.notification-options {
+  display: grid;
+  gap: 8px;
+}
+
+.notification-options .toggle-control {
+  justify-content: flex-start;
 }
 
 .shopping-layout section {
@@ -1994,11 +2047,19 @@ button svg,
 
 .water-control > div {
   z-index: 1;
+  display: grid;
+  grid-template-columns: 34px minmax(64px, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
 }
 
 .water-control strong {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 64px;
   color: #f8fafc;
   font-size: 18px;
+  white-space: nowrap;
 }
 
 .water-control button,
@@ -2383,6 +2444,80 @@ button:disabled {
 
   .sidebar > .data-panel button {
     width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .shopping-layout .table-wrap,
+  #tab-stock > .table-wrap,
+  #nutritionResults.table-wrap {
+    overflow: visible;
+  }
+
+  .shopping-layout table,
+  #tab-stock > .table-wrap table,
+  #nutritionResults table {
+    min-width: 0;
+    table-layout: auto;
+  }
+
+  .shopping-layout thead,
+  #tab-stock > .table-wrap thead,
+  #nutritionResults thead {
+    display: none;
+  }
+
+  .shopping-layout tbody,
+  .shopping-layout tr,
+  .shopping-layout td,
+  #tab-stock > .table-wrap tbody,
+  #tab-stock > .table-wrap tr,
+  #tab-stock > .table-wrap td,
+  #nutritionResults tbody,
+  #nutritionResults tr,
+  #nutritionResults td {
+    display: block;
+    width: 100%;
+  }
+
+  .shopping-layout tr,
+  #tab-stock > .table-wrap tr,
+  #nutritionResults tr {
+    border-bottom: 1px solid var(--line);
+    padding: 10px 0;
+  }
+
+  .shopping-layout td,
+  #tab-stock > .table-wrap td,
+  #nutritionResults td {
+    display: grid;
+    grid-template-columns: minmax(92px, 0.8fr) minmax(0, 1.2fr);
+    align-items: center;
+    gap: 10px;
+    border-bottom: 0;
+    padding: 6px 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .shopping-layout td::before,
+  #tab-stock > .table-wrap td::before,
+  #nutritionResults td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .shopping-total-row td {
+    display: block;
+  }
+
+  .shopping-total-row td::before {
+    content: "";
+    display: none;
   }
 }
 

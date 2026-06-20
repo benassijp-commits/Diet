@@ -39,6 +39,11 @@ const initialState = {
   activeDietVersionId: "",
   appSettings: {
     notificationsEnabled: false,
+    notificationTypes: {
+      mealReminders: true,
+      stockAlerts: false,
+      cartAlerts: false,
+    },
   },
   dietTiming: {
     minHoursBetweenMeals: 3,
@@ -429,6 +434,7 @@ function render() {
   renderLog();
   renderWater();
   renderSettings();
+  renderActiveDietControl();
   renderDietVersions();
   renderGlobalAlerts();
   refreshIcons();
@@ -752,10 +758,10 @@ function fillDailyShopping() {
       const ok = inStock >= row.qty;
       return `
         <tr>
-          <td>${row.name}</td>
-          <td><strong>${formatQty(row.qty)}</strong> ${row.unit}</td>
-          <td>${formatQty(inStock)} ${row.unit}</td>
-          <td><span class="status-pill ${ok ? "status-ok" : "status-low"}">${ok ? "Ok" : "Comprar"}</span></td>
+          <td data-label="Ingrediente">${row.name}</td>
+          <td data-label="Necessario hoje"><strong>${formatQty(row.qty)}</strong> ${row.unit}</td>
+          <td data-label="Em estoque">${formatQty(inStock)} ${row.unit}</td>
+          <td data-label="Status"><span class="status-pill ${ok ? "status-ok" : "status-low"}">${ok ? "Ok" : "Comprar"}</span></td>
         </tr>
       `;
     })
@@ -770,12 +776,12 @@ function fillWeeklyShopping() {
     .map((row) => {
       return `
         <tr class="${row.toBuy > 0 ? "purchase-needed-row" : ""}">
-          <td>${row.name}</td>
-          <td><strong>${formatQty(row.qty)}</strong> ${row.unit}</td>
-          <td>${formatQty(row.inStock)} ${row.unit}</td>
-          <td class="buy-cell"><strong>${formatQty(row.toBuy)}</strong> ${row.unit}</td>
-          <td>${row.priceLabel}</td>
-          <td>${row.unitPrice ? formatCurrency(row.estimate) : "-"}</td>
+          <td data-label="Ingrediente">${row.name}</td>
+          <td data-label="Necessario"><strong>${formatQty(row.qty)}</strong> ${row.unit}</td>
+          <td data-label="Em estoque">${formatQty(row.inStock)} ${row.unit}</td>
+          <td data-label="Comprar" class="buy-cell"><strong>${formatQty(row.toBuy)}</strong> ${row.unit}</td>
+          <td data-label="Preco">${row.priceLabel}</td>
+          <td data-label="Estimativa">${row.unitPrice ? formatCurrency(row.estimate) : "-"}</td>
         </tr>
       `;
     })
@@ -934,7 +940,7 @@ function ingredientPrice(stockItemId) {
 }
 
 function renderStockOptions() {
-  const selects = [document.getElementById("stockItem"), document.getElementById("stockEditorSelect")].filter(Boolean);
+  const selects = [document.getElementById("stockItem"), document.getElementById("stockEditorSelect"), document.getElementById("quickMealStockItem")].filter(Boolean);
   for (const select of selects) {
     const current = select.value;
     const addNew = select.id === "stockEditorSelect" ? '<option value="__new">Novo ingrediente</option>' : "";
@@ -964,13 +970,18 @@ function renderStock() {
           ? `${formatCurrency(unitPrice)} / ${formatQty(packageQty)} ${basis}`
           : `${formatCurrency(unitPrice)} / ${basis}`
         : "-";
+      const nutrition = item.nutrition || {};
+      const macrosLabel = nutrition.kcal
+        ? `${formatQty(nutrition.kcal)} kcal | P ${formatQty(nutrition.protein)} C ${formatQty(nutrition.carbs)} G ${formatQty(nutrition.fat)}`
+        : "-";
       return `
         <tr>
-          <td>${item.name}</td>
-          <td><strong>${formatQty(qty)}</strong></td>
-          <td>${item.unit}</td>
-          <td>${priceLabel}</td>
-          <td><span class="status-pill ${status.className}">${status.label}</span></td>
+          <td data-label="Ingrediente">${item.name}</td>
+          <td data-label="Estoque"><strong>${formatQty(qty)}</strong></td>
+          <td data-label="Unidade">${item.unit}</td>
+          <td data-label="Macros">${macrosLabel}</td>
+          <td data-label="Preco">${priceLabel}</td>
+          <td data-label="Status"><span class="status-pill ${status.className}">${status.label}</span></td>
         </tr>
       `;
     })
@@ -1212,7 +1223,10 @@ function registerStock(items, type, detail) {
     }
   }
   for (const item of items) {
-    state.stock[item.stockItemId] = getStockQty(item.stockItemId) + item.qty * factor;
+    const current = getStockQty(item.stockItemId);
+    state.stock[item.stockItemId] = normalizedType === "entrada"
+      ? current + item.qty
+      : Math.max(0, current - item.qty);
   }
   state.log.push({ date: timestamp(), isoDate: new Date().toISOString(), type: normalizedType, detail, items });
   render();
@@ -1563,6 +1577,23 @@ function renderSettings() {
   document.getElementById("aiSettingsStatus").textContent = settings.apiKey
     ? "IA configurada localmente para este navegador."
     : "IA ainda nao configurada.";
+  const types = state.appSettings.notificationTypes || {};
+  const mealReminders = document.getElementById("pushMealReminders");
+  const stockAlerts = document.getElementById("pushStockAlerts");
+  const cartAlerts = document.getElementById("pushCartAlerts");
+  if (mealReminders) mealReminders.checked = types.mealReminders !== false;
+  if (stockAlerts) stockAlerts.checked = Boolean(types.stockAlerts);
+  if (cartAlerts) cartAlerts.checked = Boolean(types.cartAlerts);
+}
+
+function renderActiveDietControl() {
+  const select = document.getElementById("activeDietSelect");
+  if (!select) return;
+  const current = select.value || state.activeDietVersionId;
+  select.innerHTML = (state.dietVersions || [])
+    .map((version) => `<option value="${version.id}">${version.status === "active" ? "Ativa" : "Arquivada"} · ${escapeHtml(version.name)}</option>`)
+    .join("");
+  select.value = [...select.options].some((option) => option.value === current) ? current : state.activeDietVersionId;
 }
 
 function renderDietVersions() {
@@ -1574,9 +1605,13 @@ function renderDietVersions() {
       <div class="alert-item ${version.id === state.activeDietVersionId ? "active" : ""}">
         <strong>${escapeHtml(version.name)}</strong>
         <span>${version.status === "active" ? "Ativa" : "Arquivada"} · inicio ${escapeHtml(version.activatedAt || "-")}${version.archivedAt ? ` · fim ${escapeHtml(version.archivedAt)}` : ""}</span>
+        ${version.id !== state.activeDietVersionId ? `<button class="secondary-button" data-activate-diet="${version.id}" type="button">Reativar dieta</button>` : ""}
       </div>
     `)
     .join("") || '<p class="modal-note">Nenhuma dieta versionada ainda.</p>';
+  container.querySelectorAll("[data-activate-diet]").forEach((button) => {
+    button.addEventListener("click", () => activateDietVersion(button.dataset.activateDiet));
+  });
 }
 
 function globalAlertRows() {
@@ -1599,9 +1634,11 @@ function globalAlertRows() {
 
 function renderGlobalAlerts() {
   const container = document.getElementById("globalAlerts");
-  if (!container) return;
   const alerts = globalAlertRows();
-  container.innerHTML = alerts.length
+  const badge = document.getElementById("alertsBadge");
+  const popover = document.getElementById("alertsPopover");
+  if (badge) badge.textContent = String(alerts.length);
+  const html = alerts.length
     ? alerts.map((alert) => `
       <div class="alert-item">
         <strong>${escapeHtml(alert.title)}</strong>
@@ -1609,6 +1646,18 @@ function renderGlobalAlerts() {
       </div>
     `).join("")
     : '<p class="modal-note">Sem alertas globais no momento.</p>';
+  if (container) container.innerHTML = html;
+  if (popover) popover.innerHTML = `<h4>Alertas</h4>${html}`;
+}
+
+function toggleAlertsPopover() {
+  const popover = document.getElementById("alertsPopover");
+  const toggle = document.getElementById("alertsToggle");
+  if (!popover || !toggle) return;
+  const nextHidden = !popover.hidden ? true : false;
+  popover.hidden = nextHidden;
+  toggle.setAttribute("aria-expanded", String(!nextHidden));
+}
 }
 
 async function loadNutritionBase() {
@@ -1633,23 +1682,56 @@ async function renderNutritionSearch() {
     status.textContent = `${base.itemCount || base.items?.length || 0} alimentos carregados. Traducoes em portugues pendentes.`;
     results.innerHTML = `
       <table>
-        <thead><tr><th>Nome original</th><th>Base</th><th>Kcal</th><th>Proteina</th><th>Carbo</th><th>Gordura</th></tr></thead>
+        <thead><tr><th>Nome</th><th>Base</th><th>Kcal</th><th>Proteina</th><th>Carbo</th><th>Gordura</th><th></th></tr></thead>
         <tbody>
           ${items.map((item) => `
             <tr>
-              <td>${escapeHtml(item.names?.nl || item.id)}</td>
-              <td>${formatQty(item.referenceAmount?.quantity)} ${escapeHtml(item.referenceAmount?.unit || "")}</td>
-              <td>${formatQty(item.nutrition?.kcal)}</td>
-              <td>${formatQty(item.nutrition?.protein)}</td>
-              <td>${formatQty(item.nutrition?.carbs)}</td>
-              <td>${formatQty(item.nutrition?.fat)}</td>
+              <td data-label="Nome">${escapeHtml(displayNutritionName(item))}</td>
+              <td data-label="Base">${formatQty(item.referenceAmount?.quantity)} ${escapeHtml(item.referenceAmount?.unit || "")}</td>
+              <td data-label="Kcal">${formatQty(item.nutrition?.kcal)}</td>
+              <td data-label="Proteina">${formatQty(item.nutrition?.protein)}</td>
+              <td data-label="Carbo">${formatQty(item.nutrition?.carbs)}</td>
+              <td data-label="Gordura">${formatQty(item.nutrition?.fat)}</td>
+              <td data-label="Acao"><button class="secondary-button mini-button" data-add-nutrition-stock="${escapeAttr(item.id)}" type="button">Adicionar</button></td>
             </tr>
           `).join("")}
         </tbody>
       </table>`;
+    results.querySelectorAll("[data-add-nutrition-stock]").forEach((button) => {
+      button.addEventListener("click", () => addNutritionItemToStock(button.dataset.addNutritionStock));
+    });
   } catch (error) {
     status.textContent = error.message;
   }
+}
+
+function displayNutritionName(item) {
+  return item.names?.pt || item.names?.en || item.names?.nl || item.id;
+}
+
+function addNutritionItemToStock(nutritionId) {
+  const item = nutritionBase?.items?.find((current) => current.id === nutritionId);
+  if (!item) return;
+  const name = displayNutritionName(item);
+  const existing = Object.values(state.stockItems).find((stockItem) => normalizeText(stockItem.name) === normalizeText(name));
+  if (existing) {
+    existing.nutrition = { ...(existing.nutrition || {}), ...(item.nutrition || {}) };
+    existing.nutritionSource = item.source;
+    toast("Ingrediente atualizado com dados nutricionais.");
+    render();
+    return;
+  }
+  const id = createStockItemId(name);
+  state.stockItems[id] = {
+    id,
+    name,
+    unit: item.referenceAmount?.unit || "g",
+    nutrition: item.nutrition || { kcal: 0, protein: 0, carbs: 0, fat: 0 },
+    nutritionSource: item.source,
+    aliases: item.aliases || [],
+  };
+  toast("Ingrediente adicionado ao estoque.");
+  render();
 }
 
 function openDietImportModal() {
@@ -1715,6 +1797,54 @@ function activateImportedDiet(imported) {
   render();
 }
 
+function createManualDietVersion() {
+  const name = prompt("Nome da nova dieta:", `Dieta ${new Date().toLocaleDateString("pt-BR")}`);
+  if (!name) return;
+  const today = todayKey();
+  const previousActive = state.dietVersions.find((version) => version.id === state.activeDietVersionId);
+  if (previousActive) {
+    previousActive.status = "archived";
+    previousActive.archivedAt = today;
+    previousActive.meals = clone(state.meals);
+  }
+  const meals = clone(state.meals);
+  const id = `diet_${Date.now()}`;
+  state.dietVersions.push({
+    id,
+    name: name.trim(),
+    status: "active",
+    activatedAt: today,
+    archivedAt: "",
+    source: "manual",
+    notes: "Criada manualmente a partir da dieta atual.",
+    meals,
+  });
+  state.activeDietVersionId = id;
+  render();
+  toast("Nova dieta criada.");
+}
+
+function activateDietVersion(id) {
+  const target = state.dietVersions.find((version) => version.id === id);
+  if (!target) return;
+  const today = todayKey();
+  const previousActive = state.dietVersions.find((version) => version.id === state.activeDietVersionId);
+  if (previousActive) {
+    previousActive.status = "archived";
+    previousActive.archivedAt = today;
+    previousActive.meals = clone(state.meals);
+  }
+  target.status = "active";
+  target.archivedAt = "";
+  state.activeDietVersionId = target.id;
+  state.meals = clone(target.meals);
+  state.selections = Object.fromEntries(state.meals.map((meal) => [meal.id, getOptionKeys(meal)[0]]));
+  state.shoppingCart = Object.fromEntries(state.meals.map((meal) => [meal.id, Object.fromEntries(getOptionKeys(meal).map((option) => [option, 0]))]));
+  state.collapsedMeals = {};
+  render();
+  toast(`${target.name} ativada.`);
+}
+
 function ensureStockItemForIngredient(name, unit) {
   const normalized = normalizeText(name);
   const existing = Object.values(state.stockItems).find((item) => normalizeText(item.name) === normalized);
@@ -1746,6 +1876,49 @@ function sendTestNotification() {
   });
 }
 
+function openQuickMealModal() {
+  renderStockOptions();
+  document.getElementById("quickMealAffectStock").checked = state.stockManagementEnabled;
+  document.getElementById("quickMealModal").showModal();
+}
+
+function closeQuickMealModal() {
+  document.getElementById("quickMealModal").close();
+}
+
+function registerQuickMeal() {
+  const stockItemId = document.getElementById("quickMealStockItem").value;
+  const qty = Number(document.getElementById("quickMealQty").value || 0);
+  const note = document.getElementById("quickMealNote").value.trim();
+  const affectStock = document.getElementById("quickMealAffectStock").checked;
+  if (!stockItemId || !qty) return;
+  const item = {
+    stockItemId,
+    name: labelForStockItem(stockItemId),
+    qty,
+    unit: unitForStockItem(stockItemId),
+  };
+  currentDayLog().completedMeals[`quick_${Date.now()}`] = {
+    at: timestamp(),
+    option: "Avulsa",
+    title: "Refeicao avulsa",
+    items: [item],
+  };
+  if (affectStock) {
+    registerStock([item], "consumo", note || "Refeicao avulsa");
+  } else {
+    state.log.unshift({
+      at: timestamp(),
+      type: "consumo",
+      detail: note || "Refeicao avulsa sem baixa de estoque",
+      items: [item],
+    });
+    render();
+  }
+  closeQuickMealModal();
+  toast("Refeicao avulsa registrada.");
+}
+
 document.querySelectorAll(".nav-tab").forEach((button) => {
   button.addEventListener("click", () => {
     document.querySelectorAll(".nav-tab").forEach((tab) => tab.classList.remove("active"));
@@ -1757,12 +1930,14 @@ document.querySelectorAll(".nav-tab").forEach((button) => {
 });
 
 document.getElementById("waterPlus").addEventListener("click", () => {
-  currentDayLog().water = Math.min(9.9, Number(currentDayLog().water || 0) + 0.25);
+  const log = currentDayLog();
+  log.water = Math.min(9.9, Number(log.water || 0) + 0.25);
   render();
 });
 
 document.getElementById("waterMinus").addEventListener("click", () => {
-  currentDayLog().water = Math.max(0, Number(currentDayLog().water || 0) - 0.25);
+  const log = currentDayLog();
+  log.water = Math.max(0, Number(log.water || 0) - 0.25);
   render();
 });
 
@@ -1774,7 +1949,15 @@ document.getElementById("resetDay").addEventListener("click", () => {
 });
 
 document.getElementById("addMeal").addEventListener("click", addMeal);
+document.getElementById("quickMeal").addEventListener("click", openQuickMealModal);
 document.getElementById("importDietAi").addEventListener("click", openDietImportModal);
+document.getElementById("newDietManual").addEventListener("click", createManualDietVersion);
+document.getElementById("activeDietSelect").addEventListener("change", (event) => {
+  if (event.target.value && event.target.value !== state.activeDietVersionId) {
+    activateDietVersion(event.target.value);
+  }
+});
+document.getElementById("alertsToggle")?.addEventListener("click", toggleAlertsPopover);
 
 document.getElementById("stockManagementToggle").addEventListener("change", (event) => {
   state.stockManagementEnabled = event.target.checked;
@@ -1968,6 +2151,16 @@ document.getElementById("loadNutritionBase")?.addEventListener("click", renderNu
 document.getElementById("nutritionSearch")?.addEventListener("input", renderNutritionSearch);
 document.getElementById("enableNotifications")?.addEventListener("click", requestNotificationPermission);
 document.getElementById("testNotification")?.addEventListener("click", sendTestNotification);
+["pushMealReminders", "pushStockAlerts", "pushCartAlerts"].forEach((id) => {
+  document.getElementById(id)?.addEventListener("change", () => {
+    state.appSettings.notificationTypes = {
+      mealReminders: document.getElementById("pushMealReminders")?.checked !== false,
+      stockAlerts: Boolean(document.getElementById("pushStockAlerts")?.checked),
+      cartAlerts: Boolean(document.getElementById("pushCartAlerts")?.checked),
+    };
+    render();
+  });
+});
 
 document.getElementById("closeDietImportModal")?.addEventListener("click", closeDietImportModal);
 document.getElementById("cancelDietImport")?.addEventListener("click", closeDietImportModal);
@@ -1983,6 +2176,12 @@ document.getElementById("dietImportForm")?.addEventListener("submit", async (eve
   } catch (error) {
     document.getElementById("dietImportStatus").textContent = error.message;
   }
+});
+document.getElementById("closeQuickMealModal")?.addEventListener("click", closeQuickMealModal);
+document.getElementById("cancelQuickMeal")?.addEventListener("click", closeQuickMealModal);
+document.getElementById("quickMealForm")?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  registerQuickMeal();
 });
 
 watchSession({
@@ -2030,7 +2229,7 @@ window.addEventListener("load", refreshIcons);
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js?v=20260620-shoppingpdf-wrap2").catch((error) => {
+    navigator.serviceWorker.register("/sw.js?v=dev-annotations1").catch((error) => {
       console.warn("Service worker registration failed", error);
     });
   });
