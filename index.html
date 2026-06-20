@@ -242,7 +242,7 @@
           <form class="stock-form" id="stockForm">
             <label>
               Ingrediente
-              <input id="stockItemQuery" type="search" list="stockItemSuggestions" placeholder="Buscar ingrediente" autocomplete="off" />
+              <input id="stockItemQuery" class="ingredient-combobox-input" type="search" placeholder="Buscar ingrediente" autocomplete="off" data-ingredient-combobox />
               <input id="stockItem" type="hidden" />
             </label>
             <label>
@@ -258,8 +258,6 @@
             </label>
             <button type="submit"><i data-lucide="save" aria-hidden="true"></i> Registrar</button>
           </form>
-          <datalist id="stockItemSuggestions"></datalist>
-
           <section class="stock-editor">
             <h4>Cadastro de ingredientes</h4>
             <div class="stock-editor-grid compact">
@@ -424,6 +422,7 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div id="ingredientComboboxMenu" class="ingredient-combobox-menu" hidden></div>
 
     <dialog class="meal-modal" id="mealModal">
       <form method="dialog" class="meal-modal-content" id="mealEditorForm">

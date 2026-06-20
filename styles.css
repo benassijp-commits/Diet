@@ -914,13 +914,62 @@ tbody tr:last-child td {
 }
 
 .ingredient-row .macro-detail {
-  display: none;
+  display: block;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-2px);
+  overflow: hidden;
   color: #93c5fd;
+  transition:
+    max-height 180ms ease,
+    opacity 180ms ease,
+    transform 180ms ease;
 }
 
 .ingredient-row:hover .macro-detail,
 .ingredient-row:focus-within .macro-detail {
-  display: block;
+  max-height: 22px;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.ingredient-combobox-menu {
+  position: fixed;
+  z-index: 10000;
+  display: grid;
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid rgba(59, 130, 246, 0.5);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.36);
+  padding: 6px;
+}
+
+.ingredient-combobox-menu button {
+  justify-content: flex-start;
+  min-height: 34px;
+  width: 100%;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  padding: 8px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ingredient-combobox-menu button:hover {
+  background: rgba(37, 99, 235, 0.22);
+}
+
+body.light-mode .ingredient-combobox-menu {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: #ffffff;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+}
+
+body.light-mode .ingredient-combobox-menu button:hover {
+  background: #dbeafe;
 }
 
 .modal-note {

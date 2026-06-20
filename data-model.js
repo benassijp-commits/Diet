@@ -17,7 +17,7 @@ export const BASE_STOCK_ITEMS = [
   stockItem("stk_potato_puree", "Purê de batata em pó reconstituído", "g", "carboidrato", perGram(85, 2, 18, 0.1)),
   stockItem("stk_pasta", "Macarrão cozido", "g", "carboidrato", perGram(158, 5.8, 31, 0.9)),
   stockItem("stk_tomato_sauce", "Molho de tomate natural", "porção", "molho", nutrition(35, 1.5, 7, 0.3)),
-  stockItem("stk_light_mayo", "Maionese light", "colher de sopa", "gordura", nutrition(35, 0.2, 1, 3.5)),
+  stockItem("stk_light_mayo", "Maionese light", "g", "gordura", perGram(233, 1.3, 6.7, 23.3)),
   stockItem("stk_salmon", "Salmão grelhado", "g", "proteína", perGram(208, 20, 0, 13)),
   stockItem("stk_broccoli_carrot", "Brócolis e cenoura no vapor", "g", "vegetais", perGram(35, 2, 7, 0.3)),
   stockItem("stk_nuts", "Castanhas ou amêndoas", "g", "gordura", perGram(607, 20, 21, 54)),
@@ -75,7 +75,7 @@ export const MEALS = [
     C: [
       mealItem("Pão integral sanduíche", 3, "fatias", "stk_bread"),
       mealItem("Peito de frango desfiado", 120, "g", "stk_chicken_breast"),
-      mealItem("Maionese light", 1, "colher de sopa", "stk_light_mayo"),
+      mealItem("Maionese light", 15, "g", "stk_light_mayo"),
     ],
   }),
   meal("meal4", "Refeição 4", "Jantar", "45g P / 50g C / 18g G", {

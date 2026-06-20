@@ -50,7 +50,6 @@ const initialState = {
   },
 };
 
-let state = loadState();
 let isApplyingRemoteState = false;
 let hasReceivedRemoteState = false;
 let pendingCloudSave = null;
@@ -61,6 +60,106 @@ let editingOptionKey = "A";
 let pendingPurchaseRows = [];
 let nutritionBase = null;
 let nutritionBaseLoadStarted = false;
+
+const DUTCH_NUTRITION_TRANSLATIONS = {
+  aalbessen: "Groselha vermelha",
+  aardappelen: "Batatas",
+  aardappelkroketten: "Croquetes de batata",
+  aardappelpuree: "Pure de batata",
+  aardappelzetmeel: "Amido de batata",
+  amandelbroodje: "Pao de amendoa",
+  amandelen: "Amendoas",
+  americain: "Carne bovina temperada",
+  "americain prepare": "Carne bovina temperada preparada",
+  "amsoi (gekookt)": "Mostarda chinesa cozida",
+  ananas: "Abacaxi",
+  andijvie: "Escarola",
+  anijshagel: "Confeito de anis",
+  "ansjovis in olie": "Anchovas em oleo",
+  appel: "Maca",
+  appelmoes: "Pure de maca",
+  artisjok: "Alcachofra",
+  asperges: "Aspargos",
+  aubergine: "Berinjela",
+  avocado: "Abacate",
+  bacon: "Bacon",
+  aardappel: "Batata",
+  aardbeien: "Morangos",
+  banaan: "Banana",
+  biefstuk: "Bife bovino",
+  bieten: "Beterraba",
+  bloemkool: "Couve-flor",
+  bonen: "Feijoes",
+  bosbessen: "Mirtilos",
+  boter: "Manteiga",
+  broccoli: "Brocolis",
+  "brood (volkoren)": "Pao integral",
+  "brood (wit)": "Pao branco",
+  "broodje (bruin)": "Paozinho escuro",
+  "broodje (meergranen)": "Paozinho multigraos",
+  "broodje (tarwe)": "Paozinho de trigo",
+  "broodje (volkoren)": "Paozinho integral",
+  "broodje (wit)": "Paozinho branco",
+  bruinbrood: "Pao escuro",
+  cashewnoten: "Castanha de caju",
+  "cashew-noten": "Castanha de caju",
+  champignons: "Cogumelos",
+  cheddar: "Cheddar",
+  "chili con carne": "Chili com carne",
+  "chinese kool": "Couve chinesa",
+  chocolade: "Chocolate",
+  ei: "Ovo",
+  "ei-eiwit": "Clara de ovo",
+  eieren: "Ovos",
+  eiwit: "Clara de ovo",
+  havermout: "Aveia",
+  kip: "Frango",
+  "kip-kap": "Embutido de frango",
+  "kip-kerriesalade": "Salada de frango com curry",
+  kipburger: "Hamburguer de frango",
+  "kipnugget - kipkantje": "Nugget de frango",
+  kippebouillion: "Caldo de frango",
+  kippelever: "Figado de frango",
+  "kipfilet (beleg)": "Peito de frango fatiado",
+  kipfilet: "Peito de frango",
+  "kip filet": "Peito de frango",
+  kippenham: "Fiambre de frango",
+  kippepoot: "Coxa de frango",
+  kiprollade: "Rolo de frango",
+  "kipschnitzel (gepaneerd)": "Schnitzel de frango empanado",
+  "roti (kip)": "Roti de frango",
+  "sate kip-met saus": "Espetinho de frango com molho",
+  rijst: "Arroz",
+  "rijst (basmati)": "Arroz basmati",
+  "rijst (zilvervlies)": "Arroz integral",
+  rijstwafel: "Bolacha de arroz",
+  zalm: "Salmao",
+  "zalm (gerookt)": "Salmao defumado",
+  zalmfilet: "File de salmao",
+  rundvlees: "Carne bovina",
+  rundergehakt: "Carne bovina moida",
+  tonijn: "Atum",
+  "tonijn in olie": "Atum em oleo",
+  "tonijn, eigen nat": "Atum em agua",
+  melk: "Leite",
+  "melk (magere)": "Leite magro",
+  "melk (volle)": "Leite integral",
+  sojamelk: "Leite de soja",
+  pasta: "Massa",
+  "pasta (volkoren)": "Massa integral",
+  macaroni: "Macarrao",
+  olijfolie: "Azeite de oliva",
+  mayonaise: "Maionese",
+  "mayonaise 50%": "Maionese light",
+  "mayonaise 80%": "Maionese",
+  pindakaas: "Pasta de amendoim",
+  wortel: "Cenoura",
+  yoghurt: "Iogurte",
+  "yoghurt (mager)": "Iogurte magro",
+  "yoghurt (vol)": "Iogurte integral",
+};
+
+let state = loadState();
 
 function loadState() {
   const stored = readJson(STORE_KEY);
@@ -121,6 +220,7 @@ function migrateState(rawState) {
   normalizeBuiltInText(next);
   migrateIngredientPrices(next);
   enrichStockNutrition(next);
+  normalizeTranslatedStockNames(next);
   ensureDietVersionState(next);
 
   if (rawState.completed && !rawState.dailyLogs) {
@@ -149,6 +249,7 @@ function migrateState(rawState) {
       optionKeys.map((option) => [option, Number(next.shoppingCart[meal.id]?.[option] || 0)]),
     );
   }
+  pruneUnusedCatalogStockItems(next);
   return next;
 }
 
@@ -167,6 +268,13 @@ function enrichStockNutrition(next) {
         ...(current.nutrition || {}),
       },
     };
+  }
+}
+
+function normalizeTranslatedStockNames(next) {
+  for (const item of Object.values(next.stockItems || {})) {
+    const translated = translateDutchNutritionName(item.name);
+    if (translated) item.name = translated;
   }
 }
 
@@ -415,6 +523,25 @@ function allStockItems() {
   return Object.values(state.stockItems).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function pruneUnusedCatalogStockItems(next) {
+  const usedIds = new Set();
+  for (const meal of next.meals || []) {
+    for (const option of Object.keys(meal.options || {})) {
+      for (const item of meal.options[option] || []) {
+        if (item.stockItemId) usedIds.add(item.stockItemId);
+      }
+    }
+  }
+  for (const [id, item] of Object.entries(next.stockItems || {})) {
+    const hasStock = Math.max(0, Number(next.stock?.[id] || 0)) > 0;
+    const isBase = Boolean(initialState.stockItems[id]);
+    const fromNutritionCatalog = Boolean(item.nutritionSource);
+    if (fromNutritionCatalog && !isBase && !hasStock && !usedIds.has(id)) {
+      delete next.stockItems[id];
+    }
+  }
+}
+
 function dietStockItemIds() {
   const ids = new Set();
   for (const meal of getMeals()) {
@@ -448,14 +575,65 @@ function nutritionCatalogItems() {
     .map((item) => ({
       id: `nutrition:${item.id}`,
       name: displayNutritionName(item),
-      unit: item.referenceAmount?.unit || "g",
-      aliases: item.aliases || [],
+      unit: normalizeIngredientUnit(item.referenceAmount?.unit || "g"),
+      aliases: nutritionAliasValues(item),
     }));
+}
+
+function normalizeIngredientUnit(unit) {
+  const normalized = normalizeText(unit || "g");
+  const unitMap = {
+    g: "g",
+    gram: "g",
+    gr: "g",
+    kg: "kg",
+    kilogram: "kg",
+    ml: "ml",
+    milliliter: "ml",
+    l: "L",
+    liter: "L",
+    litre: "L",
+    stuk: "unidade",
+    stuks: "unidade",
+    unidade: "unidade",
+    unidades: "unidade",
+  };
+  return unitMap[normalized] || "g";
 }
 
 function findCatalogItemBySearchLabel(value) {
   const normalized = normalizeText(value);
-  return allIngredientCatalogItems().find((item) => normalizeText(stockItemSearchLabel(item)) === normalized || normalizeText(item.name) === normalized);
+  if (!normalized) return null;
+  const items = allIngredientCatalogItems();
+  const labelMatch = items.find((item) => normalizeText(stockItemSearchLabel(item)) === normalized);
+  if (labelMatch) return labelMatch;
+  const nameMatches = items.filter((item) => normalizeText(item.name) === normalized);
+  return nameMatches.length === 1 ? nameMatches[0] : null;
+}
+
+function ingredientMatchesQuery(item, query) {
+  if (!query) return true;
+  return normalizeText(`${item.name} ${stockItemSearchLabel(item)} ${aliasText(item.aliases)}`).includes(query);
+}
+
+function aliasText(aliases = []) {
+  return aliases.map((alias) => typeof alias === "string" ? alias : alias?.value || "").join(" ");
+}
+
+function ingredientSuggestions(query, limit = 80) {
+  const normalized = normalizeText(query || "");
+  const source = normalized ? allIngredientCatalogItems() : visibleStockItems();
+  return source
+    .filter((item) => ingredientMatchesQuery(item, normalized))
+    .sort((a, b) => {
+      const aName = normalizeText(a.name);
+      const bName = normalizeText(b.name);
+      const aScore = !normalized ? 0 : aName === normalized ? 0 : aName.startsWith(normalized) ? 1 : ingredientMatchesQuery(a, normalized) ? 2 : 3;
+      const bScore = !normalized ? 0 : bName === normalized ? 0 : bName.startsWith(normalized) ? 1 : ingredientMatchesQuery(b, normalized) ? 2 : 3;
+      if (aScore !== bScore) return aScore - bScore;
+      return a.name.localeCompare(b.name);
+    })
+    .slice(0, limit);
 }
 
 function getStockQty(stockItemId) {
@@ -987,19 +1165,10 @@ function ingredientPrice(stockItemId) {
 }
 
 function renderStockOptions() {
-  const suggestions = document.getElementById("stockItemSuggestions");
-  if (suggestions) {
-    suggestions.innerHTML = allIngredientCatalogItems()
-      .map((item) => `<option value="${escapeAttr(stockItemSearchLabel(item))}"></option>`)
-      .join("");
-  }
-
   const stockQuery = document.getElementById("stockItemQuery");
   const stockHidden = document.getElementById("stockItem");
   if (stockQuery && stockHidden) {
-    const currentItem = state.stockItems[stockHidden.value] || allStockItems()[0];
-    if (!stockQuery.value && currentItem) stockQuery.value = stockItemSearchLabel(currentItem);
-    const selected = findCatalogItemBySearchLabel(stockQuery.value) || currentItem;
+    const selected = findCatalogItemBySearchLabel(stockQuery.value);
     stockHidden.value = selected?.id || "";
   }
 
@@ -1451,7 +1620,7 @@ function renderMealOptionsEditor(meal) {
                 </label>
                 <label>
                   Ingrediente
-                  <input data-field="stockItemSearch" type="search" list="stockItemSuggestions" value="${escapeAttr(stockItemSearchLabel(state.stockItems[item.stockItemId] || { name: item.label, unit: item.unit }))}" autocomplete="off" />
+                  <input data-field="stockItemSearch" type="search" value="${escapeAttr(stockItemSearchLabel(state.stockItems[item.stockItemId] || { name: item.label, unit: item.unit }))}" autocomplete="off" />
                   <input data-field="stockItemId" type="hidden" value="${escapeAttr(item.stockItemId)}" />
                 </label>
                 <button class="secondary-button" type="button" data-delete-ingredient="${option}:${index}">Excluir</button>
@@ -1509,6 +1678,53 @@ function syncIngredientSearchInput(input) {
   if (!stockItem) return;
   const unitInput = row.querySelector("[data-field='unit']");
   if (unitInput && !unitInput.value.trim()) unitInput.value = stockItem.unit;
+}
+
+async function ensureNutritionBaseForIngredientQuery(input) {
+  const query = input?.value?.trim() || "";
+  if (nutritionBase || query.length < 2) return;
+  try {
+    await loadNutritionBase();
+  } catch {
+    // O catalogo local continua funcionando mesmo se a base nutricional falhar.
+  }
+}
+
+function openIngredientCombobox(input) {
+  const menu = document.getElementById("ingredientComboboxMenu");
+  if (!menu) return;
+  const items = ingredientSuggestions(input.value);
+  if (!items.length) {
+    menu.hidden = true;
+    return;
+  }
+  const rect = input.getBoundingClientRect();
+  menu.style.left = `${rect.left}px`;
+  menu.style.top = `${rect.bottom + 4}px`;
+  menu.style.width = `${rect.width}px`;
+  menu.innerHTML = items
+    .map((item) => `<button type="button" data-combobox-item="${escapeAttr(item.id)}">${escapeHtml(stockItemSearchLabel(item))}</button>`)
+    .join("");
+  menu.hidden = false;
+  menu.querySelectorAll("[data-combobox-item]").forEach((button) => {
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      const item = allIngredientCatalogItems().find((current) => current.id === button.dataset.comboboxItem);
+      if (!item) return;
+      input.value = stockItemSearchLabel(item);
+      if (input.id === "stockItemQuery") {
+        document.getElementById("stockItem").value = item.id;
+      } else {
+        syncIngredientSearchInput(input);
+      }
+      closeIngredientCombobox();
+    });
+  });
+}
+
+function closeIngredientCombobox() {
+  const menu = document.getElementById("ingredientComboboxMenu");
+  if (menu) menu.hidden = true;
 }
 
 function saveMealEditor() {
@@ -1821,7 +2037,28 @@ async function renderNutritionSearch() {
 }
 
 function displayNutritionName(item) {
-  return item.names?.pt || item.names?.en || item.names?.nl || item.id;
+  const nl = item.names?.nl || "";
+  return item.names?.pt || item.names?.en || translateDutchNutritionName(nl) || nl || item.id;
+}
+
+function nutritionAliasValues(item) {
+  const values = [
+    item.names?.pt,
+    item.names?.en,
+    item.names?.nl,
+    translateDutchNutritionName(item.names?.nl || ""),
+    ...(item.aliases || []).map((alias) => typeof alias === "string" ? alias : alias?.value),
+  ].filter(Boolean);
+  return [...new Set(values)];
+}
+
+function translateDutchNutritionName(name) {
+  const normalized = normalizeText(name);
+  if (DUTCH_NUTRITION_TRANSLATIONS[normalized]) return DUTCH_NUTRITION_TRANSLATIONS[normalized];
+  for (const [needle, translated] of Object.entries(DUTCH_NUTRITION_TRANSLATIONS)) {
+    if (normalized.includes(needle)) return translated;
+  }
+  return "";
 }
 
 function addNutritionItemToStock(nutritionId) {
@@ -1844,7 +2081,7 @@ function upsertStockItemFromNutrition(item) {
   state.stockItems[id] = {
     id,
     name,
-    unit: item.referenceAmount?.unit || "g",
+    unit: normalizeIngredientUnit(item.referenceAmount?.unit || "g"),
     nutrition: item.nutrition || { kcal: 0, protein: 0, carbs: 0, fat: 0 },
     nutritionSource: item.source,
     aliases: item.aliases || [],
@@ -2150,25 +2387,40 @@ document.getElementById("stockForm").addEventListener("submit", (event) => {
   toast("Movimento manual registrado.");
 });
 
-document.getElementById("stockItemQuery")?.addEventListener("input", async () => {
-  if (!nutritionBase) {
-    try {
-      await loadNutritionBase();
-    } catch {
-      // A lista de estoque local continua funcionando mesmo se a base nutricional falhar.
-    }
-  }
-  renderStockOptions();
+document.addEventListener("focusin", async (event) => {
+  const input = event.target.closest?.("[data-ingredient-combobox], [data-field='stockItemSearch']");
+  if (!input) return;
+  await ensureNutritionBaseForIngredientQuery(input);
+  openIngredientCombobox(input);
 });
 
-document.getElementById("stockItem")?.addEventListener("focus", async () => {
-  if (nutritionBase || !document.getElementById("stockItemQuery")?.value) return;
-  try {
-    await loadNutritionBase();
-    renderStockOptions();
-  } catch {
-    // Mantem o seletor local se o catalogo nutricional nao carregar.
+document.addEventListener("click", async (event) => {
+  const input = event.target.closest?.("[data-ingredient-combobox], [data-field='stockItemSearch']");
+  if (!input) return;
+  await ensureNutritionBaseForIngredientQuery(input);
+  openIngredientCombobox(input);
+});
+
+document.addEventListener("input", async (event) => {
+  const input = event.target.closest?.("[data-ingredient-combobox], [data-field='stockItemSearch']");
+  if (!input) return;
+  await ensureNutritionBaseForIngredientQuery(input);
+  if (input.id === "stockItemQuery") {
+    const selected = findCatalogItemBySearchLabel(input.value);
+    document.getElementById("stockItem").value = selected?.id || "";
+  } else {
+    syncIngredientSearchInput(input);
   }
+  openIngredientCombobox(input);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeIngredientCombobox();
+});
+
+document.addEventListener("pointerdown", (event) => {
+  if (event.target.closest?.("#ingredientComboboxMenu, [data-ingredient-combobox], [data-field='stockItemSearch']")) return;
+  closeIngredientCombobox();
 });
 
 document.getElementById("clearLog").addEventListener("click", () => {
