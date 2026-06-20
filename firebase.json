@@ -1,0 +1,33 @@
+{
+  "hosting": {
+    "site": "dieta-e6bee",
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      ".firebaserc",
+      "**/.*",
+      "**/node_modules/**",
+      "backup-*",
+      "tools/**",
+      "ROADMAP_USER_STORIES.md",
+      "DATABASE_SCHEMA.md"
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(js|css)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
