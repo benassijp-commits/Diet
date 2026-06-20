@@ -9,10 +9,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Plano Alimentar" />
-    <link rel="manifest" href="manifest.webmanifest?v=dev-annotations2" />
+    <link rel="manifest" href="manifest.webmanifest?v=dev-ingredient-catalog2" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon-192.svg" />
-    <link rel="stylesheet" href="styles.css?v=dev-annotations2" />
+    <link rel="stylesheet" href="styles.css?v=dev-ingredient-catalog2" />
     <script src="https://unpkg.com/lucide@latest" defer></script>
   </head>
   <body>
@@ -242,8 +242,8 @@
           <form class="stock-form" id="stockForm">
             <label>
               Ingrediente
-              <input id="stockItemQuery" type="search" placeholder="Buscar ingrediente" />
-              <select id="stockItem"></select>
+              <input id="stockItemQuery" type="search" list="stockItemSuggestions" placeholder="Buscar ingrediente" autocomplete="off" />
+              <input id="stockItem" type="hidden" />
             </label>
             <label>
               Quantidade
@@ -258,6 +258,7 @@
             </label>
             <button type="submit"><i data-lucide="save" aria-hidden="true"></i> Registrar</button>
           </form>
+          <datalist id="stockItemSuggestions"></datalist>
 
           <section class="stock-editor">
             <h4>Cadastro de ingredientes</h4>
@@ -383,7 +384,7 @@
                 <button id="saveAiSettings" type="button"><i data-lucide="save" aria-hidden="true"></i> Salvar IA</button>
                 <button id="clearAiSettings" class="secondary-button" type="button"><i data-lucide="trash-2" aria-hidden="true"></i> Limpar chave</button>
               </div>
-              <p class="modal-note">A chave fica salva localmente neste navegador e nao e enviada ao Firestore.</p>
+              <p class="modal-note">Se voce estiver logado, a chave tambem fica associada a sua conta para uso em outros dispositivos.</p>
               <p id="aiSettingsStatus" class="modal-note"></p>
             </section>
 
@@ -444,8 +445,8 @@
             <input id="mealEditorSubtitle" type="text" />
           </label>
           <label>
-            Macros alvo
-            <input id="mealEditorMacros" type="text" />
+            Macros da opção
+            <input id="mealEditorMacros" type="text" readonly />
           </label>
         </div>
 
@@ -462,14 +463,14 @@
           </div>
           <div class="inline-stock-creator">
             <label>
-              Novo ingrediente de estoque
+              Novo ingrediente
               <input id="inlineStockName" type="text" placeholder="Ex: Arroz basmati" />
             </label>
             <label>
               Unidade
               <input id="inlineStockUnit" type="text" placeholder="g, ml, unidade" />
             </label>
-            <button id="inlineAddStockItem" class="secondary-button" type="button">Adicionar ao estoque</button>
+            <button id="inlineAddStockItem" class="secondary-button" type="button">Adicionar ingrediente</button>
           </div>
           <div id="mealOptionsEditor"></div>
         </section>
@@ -569,6 +570,6 @@
       </form>
     </dialog>
 
-    <script type="module" src="app.js?v=dev-annotations2"></script>
+    <script type="module" src="app.js?v=dev-ingredient-catalog2"></script>
   </body>
 </html>

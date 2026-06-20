@@ -866,7 +866,7 @@ tbody tr:last-child td {
 
 .inline-stock-creator {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 120px auto;
+  grid-template-columns: minmax(0, 1fr) minmax(110px, 140px) auto;
   gap: 10px;
   align-items: end;
   border: 1px solid var(--line);
@@ -894,11 +894,33 @@ tbody tr:last-child td {
 
 .ingredient-editor-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1.3fr) 110px 110px minmax(200px, 1.2fr) auto;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(92px, 0.45fr) minmax(92px, 0.45fr) minmax(220px, 1.25fr) auto;
   gap: 10px;
   align-items: end;
   border-top: 1px solid var(--line);
   padding-top: 10px;
+}
+
+.inline-stock-creator > label,
+.ingredient-editor-row > label {
+  min-width: 0;
+}
+
+.inline-stock-creator input,
+.ingredient-editor-row input,
+.ingredient-editor-row select {
+  width: 100%;
+  min-width: 0;
+}
+
+.ingredient-row .macro-detail {
+  display: none;
+  color: #93c5fd;
+}
+
+.ingredient-row:hover .macro-detail,
+.ingredient-row:focus-within .macro-detail {
+  display: block;
 }
 
 .modal-note {

@@ -60,6 +60,7 @@ let editingMealId = null;
 let editingOptionKey = "A";
 let pendingPurchaseRows = [];
 let nutritionBase = null;
+let nutritionBaseLoadStarted = false;
 
 function loadState() {
   const stored = readJson(STORE_KEY);
@@ -431,6 +432,32 @@ function visibleStockItems() {
   return allStockItems().filter((item) => dietIds.has(item.id) || getStockQty(item.id) > 0);
 }
 
+function stockItemSearchLabel(item) {
+  return `${item.name} (${item.unit})`;
+}
+
+function allIngredientCatalogItems() {
+  return [...allStockItems(), ...nutritionCatalogItems()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function nutritionCatalogItems() {
+  if (!nutritionBase?.items?.length) return [];
+  const knownNames = new Set(allStockItems().map((item) => normalizeText(item.name)));
+  return nutritionBase.items
+    .filter((item) => !knownNames.has(normalizeText(displayNutritionName(item))))
+    .map((item) => ({
+      id: `nutrition:${item.id}`,
+      name: displayNutritionName(item),
+      unit: item.referenceAmount?.unit || "g",
+      aliases: item.aliases || [],
+    }));
+}
+
+function findCatalogItemBySearchLabel(value) {
+  const normalized = normalizeText(value);
+  return allIngredientCatalogItems().find((item) => normalizeText(stockItemSearchLabel(item)) === normalized || normalizeText(item.name) === normalized);
+}
+
 function getStockQty(stockItemId) {
   return Math.max(0, Number(state.stock[stockItemId] || 0));
 }
@@ -508,13 +535,14 @@ function renderMeals() {
     const selected = optionKeys.includes(state.selections[meal.id]) ? state.selections[meal.id] : optionKeys[0];
     const completedRecord = dayLog.completedMeals[meal.id];
     const isCollapsed = Boolean(state.collapsedMeals?.[meal.id]);
+    const selectedTotals = optionNutritionTotals(meal, selected);
     const card = document.createElement("article");
     card.className = `meal-card${isCollapsed ? " collapsed" : ""}`;
     card.innerHTML = `
       <header>
         <div>
           <h3><i data-lucide="utensils" aria-hidden="true"></i> ${meal.title}</h3>
-          <p>${meal.subtitle} | ${meal.macros}</p>
+          <p>${meal.subtitle} | ${nutritionSummary(selectedTotals)}</p>
         </div>
         ${completedRecord ? `<span class="completed-pill"><i data-lucide="check-circle-2" aria-hidden="true"></i> Concluída ${formatTime(completedRecord.completedAt)}</span>` : ""}
       </header>
@@ -528,9 +556,10 @@ function renderMeals() {
         ${(meal.options[selected] || [])
           .map((ingredient) => {
             const stockItem = state.stockItems[ingredient.stockItemId];
+            const macroSummary = ingredientNutritionSummary(ingredient);
             return `
-              <div class="ingredient-row">
-                <span>${ingredient.label}<small>${stockItem?.name || "Sem item de estoque"}</small></span>
+              <div class="ingredient-row" title="${escapeAttr(macroSummary)}">
+                <span>${ingredient.label}<small>${stockItem?.name || "Sem item de estoque"}</small><small class="macro-detail">${macroSummary}</small></span>
                 <strong>${formatQty(ingredient.qty)} ${ingredient.unit}</strong>
               </div>
             `;
@@ -620,11 +649,12 @@ function isInteractiveToggleChild(target, container) {
 
 function renderNutritionProgress() {
   const totals = currentNutritionTotals();
+  const targets = currentDietTargets();
   const rows = [
-    { selector: ".metric-row:nth-of-type(1)", value: totals.kcal, target: DAILY_TARGETS.kcal, suffix: "kcal" },
-    { selector: ".metric-row:nth-of-type(2)", value: totals.protein, target: DAILY_TARGETS.protein, suffix: "g" },
-    { selector: ".metric-row:nth-of-type(3)", value: totals.carbs, target: DAILY_TARGETS.carbs, suffix: "g" },
-    { selector: ".metric-row:nth-of-type(4)", value: totals.fat, target: DAILY_TARGETS.fat, suffix: "g" },
+    { selector: ".metric-row:nth-of-type(1)", value: totals.kcal, target: targets.kcal || DAILY_TARGETS.kcal, suffix: "kcal" },
+    { selector: ".metric-row:nth-of-type(2)", value: totals.protein, target: targets.protein || DAILY_TARGETS.protein, suffix: "g" },
+    { selector: ".metric-row:nth-of-type(3)", value: totals.carbs, target: targets.carbs || DAILY_TARGETS.carbs, suffix: "g" },
+    { selector: ".metric-row:nth-of-type(4)", value: totals.fat, target: targets.fat || DAILY_TARGETS.fat, suffix: "g" },
   ];
 
   for (const row of rows) {
@@ -957,15 +987,28 @@ function ingredientPrice(stockItemId) {
 }
 
 function renderStockOptions() {
-  const selects = [document.getElementById("stockItem"), document.getElementById("stockEditorSelect"), document.getElementById("quickMealStockItem")].filter(Boolean);
+  const suggestions = document.getElementById("stockItemSuggestions");
+  if (suggestions) {
+    suggestions.innerHTML = allIngredientCatalogItems()
+      .map((item) => `<option value="${escapeAttr(stockItemSearchLabel(item))}"></option>`)
+      .join("");
+  }
+
+  const stockQuery = document.getElementById("stockItemQuery");
+  const stockHidden = document.getElementById("stockItem");
+  if (stockQuery && stockHidden) {
+    const currentItem = state.stockItems[stockHidden.value] || allStockItems()[0];
+    if (!stockQuery.value && currentItem) stockQuery.value = stockItemSearchLabel(currentItem);
+    const selected = findCatalogItemBySearchLabel(stockQuery.value) || currentItem;
+    stockHidden.value = selected?.id || "";
+  }
+
+  const selects = [document.getElementById("stockEditorSelect"), document.getElementById("quickMealStockItem")].filter(Boolean);
   for (const select of selects) {
     const current = select.value;
     const addNew = select.id === "stockEditorSelect" ? '<option value="__new">Novo ingrediente</option>' : "";
-    const query = select.id === "stockItem" ? normalizeText(document.getElementById("stockItemQuery")?.value || "") : "";
-    const stockItems = allStockItems().filter((item) => !query || normalizeText(`${item.name} ${(item.aliases || []).join(" ")}`).includes(query));
-    const nutritionItems = select.id === "stockItem" ? nutritionStockOptions(query) : [];
-    select.innerHTML = addNew + [...stockItems, ...nutritionItems]
-      .map((item) => `<option value="${item.id}">${item.name} (${item.unit})</option>`)
+    select.innerHTML = addNew + allStockItems()
+      .map((item) => `<option value="${item.id}">${stockItemSearchLabel(item)}</option>`)
       .join("");
     if ([...select.options].some((option) => option.value === current)) {
       select.value = current;
@@ -973,21 +1016,33 @@ function renderStockOptions() {
   }
 }
 
-function nutritionStockOptions(query) {
-  if (!nutritionBase?.items?.length) return [];
-  const knownNames = new Set(allStockItems().map((item) => normalizeText(item.name)));
-  return nutritionBase.items
-    .filter((item) => !knownNames.has(normalizeText(displayNutritionName(item))))
-    .filter((item) => {
-      if (!query) return false;
-      return normalizeText(`${item.names?.nl || ""} ${item.names?.pt || ""} ${item.names?.en || ""} ${(item.aliases || []).join(" ")}`).includes(query);
-    })
-    .slice(0, 60)
-    .map((item) => ({
-      id: `nutrition:${item.id}`,
-      name: displayNutritionName(item),
-      unit: item.referenceAmount?.unit || "g",
-    }));
+function currentDietTargets() {
+  const totals = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+  for (const meal of getMeals()) {
+    const option = state.selections[meal.id] || getOptionKeys(meal)[0];
+    for (const item of meal.options?.[option] || []) {
+      addNutrition(totals, item);
+    }
+  }
+  return totals;
+}
+
+function optionNutritionTotals(meal, option) {
+  const totals = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+  for (const item of meal.options?.[option] || []) {
+    addNutrition(totals, item);
+  }
+  return totals;
+}
+
+function nutritionSummary(totals) {
+  return `${formatQty(totals.kcal)} kcal | ${formatQty(totals.protein)} P / ${formatQty(totals.carbs)} C / ${formatQty(totals.fat)} G`;
+}
+
+function ingredientNutritionSummary(item) {
+  const totals = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+  addNutrition(totals, item);
+  return nutritionSummary(totals);
 }
 
 function renderStock() {
@@ -1347,7 +1402,6 @@ function openMealEditor(mealId) {
   document.getElementById("mealModalTitle").textContent = `Editar ${meal.title}`;
   document.getElementById("mealEditorTitle").value = meal.title;
   document.getElementById("mealEditorSubtitle").value = meal.subtitle;
-  document.getElementById("mealEditorMacros").value = meal.macros;
   renderMealOptionsEditor(meal);
   document.getElementById("mealModal").showModal();
 }
@@ -1367,11 +1421,8 @@ function renderMealOptionsEditor(meal) {
   picker.innerHTML = optionKeys.map((option) => `<option value="${option}">Opção ${option}</option>`).join("");
   picker.value = editingOptionKey;
 
-  const stockOptions = allStockItems()
-    .map((item) => `<option value="${item.id}">${item.name} (${item.unit})</option>`)
-    .join("");
-
   const option = editingOptionKey;
+  document.getElementById("mealEditorMacros").value = nutritionSummary(optionNutritionTotals(meal, option));
   container.innerHTML = `
     <section class="option-editor-block" data-editor-option="${option}">
       <header>
@@ -1387,7 +1438,7 @@ function renderMealOptionsEditor(meal) {
             (item, index) => `
               <div class="ingredient-editor-row" data-ingredient-row data-option="${option}" data-index="${index}">
                 <label>
-                  Ingrediente
+                  Alimento
                   <input data-field="label" type="text" value="${escapeAttr(item.label)}" />
                 </label>
                 <label>
@@ -1399,10 +1450,9 @@ function renderMealOptionsEditor(meal) {
                   <input data-field="unit" type="text" value="${escapeAttr(item.unit)}" />
                 </label>
                 <label>
-                  Ingrediente de estoque
-                  <select data-field="stockItemId">
-                    ${stockOptions}
-                  </select>
+                  Ingrediente
+                  <input data-field="stockItemSearch" type="search" list="stockItemSuggestions" value="${escapeAttr(stockItemSearchLabel(state.stockItems[item.stockItemId] || { name: item.label, unit: item.unit }))}" autocomplete="off" />
+                  <input data-field="stockItemId" type="hidden" value="${escapeAttr(item.stockItemId)}" />
                 </label>
                 <button class="secondary-button" type="button" data-delete-ingredient="${option}:${index}">Excluir</button>
               </div>
@@ -1413,11 +1463,9 @@ function renderMealOptionsEditor(meal) {
     </section>
   `;
 
-  container.querySelectorAll("[data-field='stockItemId']").forEach((select) => {
-    const row = select.closest("[data-ingredient-row]");
-    const option = row.dataset.option;
-    const index = Number(row.dataset.index);
-    select.value = meal.options[option][index].stockItemId;
+  container.querySelectorAll("[data-field='stockItemSearch']").forEach((input) => {
+    input.addEventListener("input", () => syncIngredientSearchInput(input));
+    input.addEventListener("change", () => syncIngredientSearchInput(input));
   });
 
   container.querySelectorAll("[data-add-ingredient]").forEach((button) => {
@@ -1453,13 +1501,22 @@ function renderMealOptionsEditor(meal) {
   });
 }
 
+function syncIngredientSearchInput(input) {
+  const row = input.closest("[data-ingredient-row]");
+  const stockItem = findCatalogItemBySearchLabel(input.value);
+  const hidden = row?.querySelector("[data-field='stockItemId']");
+  if (hidden) hidden.value = stockItem?.id || "";
+  if (!stockItem) return;
+  const unitInput = row.querySelector("[data-field='unit']");
+  if (unitInput && !unitInput.value.trim()) unitInput.value = stockItem.unit;
+}
+
 function saveMealEditor() {
   const meal = getMeals().find((current) => current.id === editingMealId);
   if (!meal) return;
 
   meal.title = document.getElementById("mealEditorTitle").value.trim() || meal.title;
   meal.subtitle = document.getElementById("mealEditorSubtitle").value.trim();
-  meal.macros = document.getElementById("mealEditorMacros").value.trim();
 
   persistVisibleOptionEdits(meal);
 
@@ -1477,12 +1534,16 @@ function persistVisibleOptionEdits(meal) {
   if (!optionBlock) return;
   const option = optionBlock.dataset.editorOption;
   meal.options[option] = [...optionBlock.querySelectorAll("[data-ingredient-row]")]
-    .map((row) => ({
-      label: row.querySelector("[data-field='label']").value.trim(),
-      qty: Number(row.querySelector("[data-field='qty']").value || 0),
-      unit: row.querySelector("[data-field='unit']").value.trim(),
-      stockItemId: row.querySelector("[data-field='stockItemId']").value,
-    }))
+    .map((row) => {
+      const stockItemId = resolveStockItemSelection(row.querySelector("[data-field='stockItemId']").value);
+      const stockItem = state.stockItems[stockItemId];
+      return {
+        label: row.querySelector("[data-field='label']").value.trim(),
+        qty: Number(row.querySelector("[data-field='qty']").value || 0),
+        unit: row.querySelector("[data-field='unit']").value.trim() || stockItem?.unit || "",
+        stockItemId,
+      };
+    })
     .filter((item) => item.label && item.stockItemId);
 }
 
@@ -1507,8 +1568,15 @@ function addInlineStockItem() {
     return;
   }
 
-  const id = createStockItemId(name);
-  state.stockItems[id] = { id, name, unit };
+  const existing = Object.values(state.stockItems).find((item) => normalizeText(item.name) === normalizeText(name));
+  const id = existing?.id || createStockItemId(name);
+  state.stockItems[id] = {
+    ...(state.stockItems[id] || {}),
+    id,
+    name: existing?.name || name,
+    unit: existing?.unit || unit,
+    nutrition: state.stockItems[id]?.nutrition || { kcal: 0, protein: 0, carbs: 0, fat: 0 },
+  };
   nameInput.value = "";
   unitInput.value = "";
 
@@ -1519,7 +1587,7 @@ function addInlineStockItem() {
     renderMealOptionsEditor(meal);
   }
 
-  toast("Ingrediente adicionado ao estoque.");
+  toast(existing ? "Ingrediente existente reutilizado." : "Ingrediente adicionado ao catálogo.");
 }
 
 function deleteMeal(mealId) {
@@ -1602,7 +1670,7 @@ function updateAccountUi(user) {
 function renderSettings() {
   const provider = document.getElementById("aiProvider");
   if (!provider) return;
-  const settings = loadAiSettings();
+  const settings = currentAiSettings();
   provider.value = settings.provider;
   document.getElementById("aiBaseUrl").value = settings.baseUrl;
   document.getElementById("aiModel").value = settings.model;
@@ -1692,12 +1760,27 @@ function toggleAlertsPopover() {
   toggle.setAttribute("aria-expanded", String(!nextHidden));
 }
 
+function currentAiSettings() {
+  return {
+    ...loadAiSettings(),
+    ...(state.appSettings.aiSettings || {}),
+  };
+}
+
 async function loadNutritionBase() {
   if (nutritionBase) return nutritionBase;
   const response = await fetch("data/nutrition/dutch-coach-nutrition.normalized.json");
   if (!response.ok) throw new Error("Nao foi possivel carregar a base nutricional.");
   nutritionBase = await response.json();
   return nutritionBase;
+}
+
+function preloadNutritionCatalog() {
+  if (nutritionBase || nutritionBaseLoadStarted) return;
+  nutritionBaseLoadStarted = true;
+  loadNutritionBase()
+    .then(() => renderStockOptions())
+    .catch((error) => console.warn("Nutrition catalog preload failed", error));
 }
 
 async function renderNutritionSearch() {
@@ -1770,10 +1853,15 @@ function upsertStockItemFromNutrition(item) {
 }
 
 function resolveStockItemSelection(value) {
-  if (!value?.startsWith?.("nutrition:")) return value;
-  const nutritionId = value.slice("nutrition:".length);
-  const item = nutritionBase?.items?.find((current) => current.id === nutritionId);
-  return item ? upsertStockItemFromNutrition(item) : "";
+  if (state.stockItems[value]) return value;
+  if (value?.startsWith?.("nutrition:")) {
+    const nutritionId = value.slice("nutrition:".length);
+    const item = nutritionBase?.items?.find((current) => current.id === nutritionId);
+    return item ? upsertStockItemFromNutrition(item) : "";
+  }
+  const catalogItem = findCatalogItemBySearchLabel(value);
+  if (!catalogItem) return "";
+  return resolveStockItemSelection(catalogItem.id);
 }
 
 function openDietImportModal() {
@@ -1790,7 +1878,7 @@ async function importDietWithAi() {
   status.textContent = "Enviando dieta para IA...";
   const imported = await importDietFromText({
     text: document.getElementById("dietImportText").value,
-    settings: loadAiSettings(),
+    settings: currentAiSettings(),
   });
   activateImportedDiet(imported);
   closeDietImportModal();
@@ -2051,7 +2139,7 @@ document.getElementById("copyShopping").addEventListener("click", async () => {
 
 document.getElementById("stockForm").addEventListener("submit", (event) => {
   event.preventDefault();
-  const stockItemId = resolveStockItemSelection(document.getElementById("stockItem").value);
+  const stockItemId = resolveStockItemSelection(document.getElementById("stockItem").value || document.getElementById("stockItemQuery").value);
   const qty = Number(document.getElementById("stockQty").value);
   const type = document.getElementById("stockType").value;
   if (!stockItemId || !qty) return;
@@ -2199,20 +2287,24 @@ document.getElementById("closePurchaseModal").addEventListener("click", closePur
 document.getElementById("cancelPurchase").addEventListener("click", closePurchaseModal);
 
 document.getElementById("saveAiSettings")?.addEventListener("click", () => {
-  saveAiSettings({
+  const settings = saveAiSettings({
     provider: document.getElementById("aiProvider").value,
     baseUrl: document.getElementById("aiBaseUrl").value,
     model: document.getElementById("aiModel").value,
     apiKey: document.getElementById("aiApiKey").value,
   });
+  state.appSettings.aiSettings = settings;
   renderSettings();
-  toast("Configuracoes de IA salvas localmente.");
+  toast(getCurrentUser() ? "IA salva neste navegador e na sua conta." : "IA salva localmente neste navegador.");
+  render();
 });
 
 document.getElementById("clearAiSettings")?.addEventListener("click", () => {
   clearAiSettings();
+  delete state.appSettings.aiSettings;
   renderSettings();
   toast("Chave de IA removida deste navegador.");
+  render();
 });
 
 document.getElementById("loadNutritionBase")?.addEventListener("click", renderNutritionSearch);
@@ -2297,10 +2389,11 @@ window.addEventListener("load", refreshIcons);
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js?v=dev-annotations2").catch((error) => {
+    navigator.serviceWorker.register("/sw.js?v=dev-ingredient-catalog2").catch((error) => {
       console.warn("Service worker registration failed", error);
     });
   });
 }
 
 render();
+preloadNutritionCatalog();

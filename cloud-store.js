@@ -76,7 +76,12 @@ export async function saveUserState(state) {
 }
 
 function userStateDoc(uid) {
-  return doc(db, "users", uid, "state", "current");
+  return doc(db, "users", uid, "state", stateDocumentId());
+}
+
+function stateDocumentId() {
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1" ? "current-dev" : "current";
 }
 
 getRedirectResult(auth).catch((error) => {
