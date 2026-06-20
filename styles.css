@@ -465,6 +465,43 @@ progress {
   gap: 16px;
 }
 
+.settings-layout {
+  display: grid;
+  gap: 18px;
+}
+
+.alert-list {
+  display: grid;
+  gap: 10px;
+}
+
+.alert-item {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  padding: 12px;
+}
+
+.alert-item strong {
+  color: var(--ink);
+}
+
+.alert-item span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.alert-item.active {
+  border-color: rgba(16, 185, 129, 0.55);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.compact-table {
+  max-height: 420px;
+}
+
 .shopping-layout section {
   display: grid;
   gap: 10px;

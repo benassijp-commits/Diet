@@ -25,10 +25,10 @@ Estado atual:
 
 Proximo passo imediato:
 
-- colocar a versao atual no Git como `v0.1-funcional`;
-- criar branch `dev`;
-- trabalhar novas features fora da producao;
-- so publicar quando uma nova etapa estiver estavel.
+- trabalhar a versao `0.2` na branch `dev`;
+- nao publicar Firebase Hosting a partir da `dev`;
+- testar pelo localhost;
+- so fazer merge para `main` quando a etapa estiver estavel.
 
 ## Regras Do Produto
 
@@ -61,17 +61,21 @@ Usar Cloud Functions no futuro quando precisarmos de:
 
 ## Proximas Features
 
-1. Git e versao estavel.
-2. Modularizacao do codigo.
-3. Dietas versionadas.
-4. Base nutricional por ingrediente.
-5. Importador PDF/Excel de dieta.
-6. Check-in corporal.
-7. Financeiro basico.
-8. Treinos e progressao de carga.
-9. Graficos.
-10. Analises de causa e efeito.
-11. Alertas globais.
+0.2:
+
+- Dietas versionadas.
+- Base nutricional por ingrediente.
+- Importacao de dieta com IA.
+- Alertas globais.
+- Configuracoes locais de IA.
+
+Depois:
+
+- Check-in corporal.
+- Financeiro basico.
+- Treinos e progressao de carga.
+- Graficos.
+- Analises de causa e efeito.
 
 ## Dietas Versionadas
 

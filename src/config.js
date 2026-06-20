@@ -8,3 +8,11 @@ export const DAILY_TARGETS = {
   carbs: 241,
   fat: 68,
 };
+
+export const AI_SETTINGS_KEY = "joao-diet-ai-settings-v1";
+
+export const DEFAULT_AI_SETTINGS = {
+  provider: "nanogpt",
+  baseUrl: "https://nano-gpt.com/api/v1",
+  model: "deepseek/deepseek-chat",
+};

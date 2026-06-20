@@ -6,7 +6,9 @@ import {
   watchSession,
 } from "./cloud-store.js";
 import { BASE_STOCK_ITEMS, MEALS as BASE_MEALS } from "./data-model.js";
+import { clearAiSettings, loadAiSettings, saveAiSettings } from "./src/ai-settings.js";
 import { DAILY_TARGETS, LEGACY_STORE_KEY, OPTION_LETTERS, STORE_KEY } from "./src/config.js";
+import { importDietFromText } from "./src/diet-importer.js";
 import {
   clone,
   escapeAttr,
@@ -33,6 +35,11 @@ const initialState = {
   collapsedMeals: {},
   cartCollapsed: false,
   theme: "dark",
+  dietVersions: [],
+  activeDietVersionId: "",
+  appSettings: {
+    notificationsEnabled: false,
+  },
   dietTiming: {
     minHoursBetweenMeals: 3,
   },
@@ -47,6 +54,7 @@ let lastCloudSaveStartedAt = 0;
 let editingMealId = null;
 let editingOptionKey = "A";
 let pendingPurchaseRows = [];
+let nutritionBase = null;
 
 function loadState() {
   const stored = readJson(STORE_KEY);
@@ -89,6 +97,12 @@ function migrateState(rawState) {
     collapsedMeals: rawState.collapsedMeals || {},
     cartCollapsed: Boolean(rawState.cartCollapsed),
     theme: rawState.theme === "light" ? "light" : "dark",
+    dietVersions: Array.isArray(rawState.dietVersions) ? rawState.dietVersions : [],
+    activeDietVersionId: rawState.activeDietVersionId || "",
+    appSettings: {
+      ...clone(initialState.appSettings),
+      ...(rawState.appSettings || {}),
+    },
     dailyLogs: rawState.dailyLogs || {},
     dietTiming: {
       ...clone(initialState.dietTiming),
@@ -101,6 +115,7 @@ function migrateState(rawState) {
   normalizeBuiltInText(next);
   migrateIngredientPrices(next);
   enrichStockNutrition(next);
+  ensureDietVersionState(next);
 
   if (rawState.completed && !rawState.dailyLogs) {
     for (const [day, completedMeals] of Object.entries(rawState.completed)) {
@@ -147,6 +162,24 @@ function enrichStockNutrition(next) {
       },
     };
   }
+}
+
+function ensureDietVersionState(next) {
+  if (!Array.isArray(next.dietVersions)) next.dietVersions = [];
+  if (next.dietVersions.length && next.activeDietVersionId) return;
+
+  const id = `diet_${todayKey()}_baseline`;
+  next.activeDietVersionId = id;
+  next.dietVersions = [{
+    id,
+    name: "Dieta atual",
+    status: "active",
+    activatedAt: todayKey(),
+    archivedAt: "",
+    source: "baseline",
+    meals: clone(next.meals || initialState.meals),
+    notes: "Versao inicial criada a partir da dieta funcional existente.",
+  }];
 }
 
 function normalizeBuiltInText(next) {
@@ -395,6 +428,9 @@ function render() {
   renderStockEditor();
   renderLog();
   renderWater();
+  renderSettings();
+  renderDietVersions();
+  renderGlobalAlerts();
   refreshIcons();
   saveState();
 }
@@ -1516,6 +1552,200 @@ function updateAccountUi(user) {
   setSyncStatus("Conectado. Carregando Firestore...");
 }
 
+function renderSettings() {
+  const provider = document.getElementById("aiProvider");
+  if (!provider) return;
+  const settings = loadAiSettings();
+  provider.value = settings.provider;
+  document.getElementById("aiBaseUrl").value = settings.baseUrl;
+  document.getElementById("aiModel").value = settings.model;
+  document.getElementById("aiApiKey").value = settings.apiKey;
+  document.getElementById("aiSettingsStatus").textContent = settings.apiKey
+    ? "IA configurada localmente para este navegador."
+    : "IA ainda nao configurada.";
+}
+
+function renderDietVersions() {
+  const container = document.getElementById("dietVersionsList");
+  if (!container) return;
+  const versions = state.dietVersions || [];
+  container.innerHTML = versions
+    .map((version) => `
+      <div class="alert-item ${version.id === state.activeDietVersionId ? "active" : ""}">
+        <strong>${escapeHtml(version.name)}</strong>
+        <span>${version.status === "active" ? "Ativa" : "Arquivada"} · inicio ${escapeHtml(version.activatedAt || "-")}${version.archivedAt ? ` · fim ${escapeHtml(version.archivedAt)}` : ""}</span>
+      </div>
+    `)
+    .join("") || '<p class="modal-note">Nenhuma dieta versionada ainda.</p>';
+}
+
+function globalAlertRows() {
+  const alerts = [];
+  const cartMessage = cartValidationMessage();
+  if (cartMessage && !cartMessage.startsWith("Carrinho vazio")) {
+    alerts.push({ title: "Carrinho desequilibrado", detail: cartMessage.replace(/\n/g, " ") });
+  }
+  for (const row of aggregate(getMealItemsForPlan())) {
+    const stock = getStockQty(row.stockItemId);
+    if (row.qty > 0 && stock < row.qty) {
+      alerts.push({
+        title: `${row.name}: abaixo do carrinho`,
+        detail: `Estoque ${formatQty(stock)} ${row.unit}; necessario ${formatQty(row.qty)} ${row.unit}.`,
+      });
+    }
+  }
+  return alerts.slice(0, 8);
+}
+
+function renderGlobalAlerts() {
+  const container = document.getElementById("globalAlerts");
+  if (!container) return;
+  const alerts = globalAlertRows();
+  container.innerHTML = alerts.length
+    ? alerts.map((alert) => `
+      <div class="alert-item">
+        <strong>${escapeHtml(alert.title)}</strong>
+        <span>${escapeHtml(alert.detail)}</span>
+      </div>
+    `).join("")
+    : '<p class="modal-note">Sem alertas globais no momento.</p>';
+}
+
+async function loadNutritionBase() {
+  if (nutritionBase) return nutritionBase;
+  const response = await fetch("data/nutrition/dutch-coach-nutrition.normalized.json");
+  if (!response.ok) throw new Error("Nao foi possivel carregar a base nutricional.");
+  nutritionBase = await response.json();
+  return nutritionBase;
+}
+
+async function renderNutritionSearch() {
+  const status = document.getElementById("nutritionBaseStatus");
+  const results = document.getElementById("nutritionResults");
+  if (!status || !results) return;
+
+  try {
+    const base = await loadNutritionBase();
+    const query = normalizeText(document.getElementById("nutritionSearch")?.value || "");
+    const items = (base.items || [])
+      .filter((item) => !query || normalizeText(`${item.names?.nl || ""} ${item.names?.pt || ""} ${item.names?.en || ""}`).includes(query))
+      .slice(0, 20);
+    status.textContent = `${base.itemCount || base.items?.length || 0} alimentos carregados. Traducoes em portugues pendentes.`;
+    results.innerHTML = `
+      <table>
+        <thead><tr><th>Nome original</th><th>Base</th><th>Kcal</th><th>Proteina</th><th>Carbo</th><th>Gordura</th></tr></thead>
+        <tbody>
+          ${items.map((item) => `
+            <tr>
+              <td>${escapeHtml(item.names?.nl || item.id)}</td>
+              <td>${formatQty(item.referenceAmount?.quantity)} ${escapeHtml(item.referenceAmount?.unit || "")}</td>
+              <td>${formatQty(item.nutrition?.kcal)}</td>
+              <td>${formatQty(item.nutrition?.protein)}</td>
+              <td>${formatQty(item.nutrition?.carbs)}</td>
+              <td>${formatQty(item.nutrition?.fat)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>`;
+  } catch (error) {
+    status.textContent = error.message;
+  }
+}
+
+function openDietImportModal() {
+  document.getElementById("dietImportStatus").textContent = "";
+  document.getElementById("dietImportModal").showModal();
+}
+
+function closeDietImportModal() {
+  document.getElementById("dietImportModal").close();
+}
+
+async function importDietWithAi() {
+  const status = document.getElementById("dietImportStatus");
+  status.textContent = "Enviando dieta para IA...";
+  const imported = await importDietFromText({
+    text: document.getElementById("dietImportText").value,
+    settings: loadAiSettings(),
+  });
+  activateImportedDiet(imported);
+  closeDietImportModal();
+  toast("Dieta importada e ativada.");
+}
+
+function activateImportedDiet(imported) {
+  const today = todayKey();
+  const previousActive = state.dietVersions.find((version) => version.id === state.activeDietVersionId);
+  if (previousActive) {
+    previousActive.status = "archived";
+    previousActive.archivedAt = today;
+    previousActive.meals = clone(state.meals);
+  }
+
+  const meals = imported.meals.map((meal, index) => ({
+    id: `meal_${Date.now()}_${index}`,
+    title: meal.title,
+    subtitle: meal.subtitle,
+    macros: meal.macros,
+    options: Object.fromEntries(Object.entries(meal.options).map(([option, items]) => [
+      option,
+      items.map((item) => {
+        const stockItemId = ensureStockItemForIngredient(item.label, item.unit);
+        return { ...item, stockItemId };
+      }),
+    ])),
+  }));
+
+  const id = `diet_${Date.now()}`;
+  state.dietVersions.push({
+    id,
+    name: imported.dietName,
+    status: "active",
+    activatedAt: today,
+    archivedAt: "",
+    source: "ai_import",
+    notes: imported.notes,
+    meals: clone(meals),
+  });
+  state.activeDietVersionId = id;
+  state.meals = meals;
+  state.selections = Object.fromEntries(meals.map((meal) => [meal.id, getOptionKeys(meal)[0]]));
+  state.shoppingCart = Object.fromEntries(meals.map((meal) => [meal.id, Object.fromEntries(getOptionKeys(meal).map((option) => [option, 0]))]));
+  state.collapsedMeals = {};
+  render();
+}
+
+function ensureStockItemForIngredient(name, unit) {
+  const normalized = normalizeText(name);
+  const existing = Object.values(state.stockItems).find((item) => normalizeText(item.name) === normalized);
+  if (existing) return existing.id;
+  const id = createStockItemId(name);
+  state.stockItems[id] = { id, name, unit: unit || "g", nutrition: { kcal: 0, protein: 0, carbs: 0, fat: 0 } };
+  return id;
+}
+
+async function requestNotificationPermission() {
+  if (!("Notification" in window)) {
+    toast("Este navegador nao suporta notificacoes.");
+    return;
+  }
+  const result = await Notification.requestPermission();
+  state.appSettings.notificationsEnabled = result === "granted";
+  render();
+  toast(result === "granted" ? "Notificacoes ativadas." : "Notificacoes nao autorizadas.");
+}
+
+function sendTestNotification() {
+  if (!("Notification" in window) || Notification.permission !== "granted") {
+    toast("Ative as notificacoes primeiro.");
+    return;
+  }
+  new Notification("Plano Alimentar", {
+    body: "Notificacao de teste ativada.",
+    icon: "icons/icon-192.png",
+  });
+}
+
 document.querySelectorAll(".nav-tab").forEach((button) => {
   button.addEventListener("click", () => {
     document.querySelectorAll(".nav-tab").forEach((tab) => tab.classList.remove("active"));
@@ -1544,6 +1774,7 @@ document.getElementById("resetDay").addEventListener("click", () => {
 });
 
 document.getElementById("addMeal").addEventListener("click", addMeal);
+document.getElementById("importDietAi").addEventListener("click", openDietImportModal);
 
 document.getElementById("stockManagementToggle").addEventListener("change", (event) => {
   state.stockManagementEnabled = event.target.checked;
@@ -1715,6 +1946,44 @@ document.getElementById("purchaseForm").addEventListener("submit", (event) => {
 });
 document.getElementById("closePurchaseModal").addEventListener("click", closePurchaseModal);
 document.getElementById("cancelPurchase").addEventListener("click", closePurchaseModal);
+
+document.getElementById("saveAiSettings")?.addEventListener("click", () => {
+  saveAiSettings({
+    provider: document.getElementById("aiProvider").value,
+    baseUrl: document.getElementById("aiBaseUrl").value,
+    model: document.getElementById("aiModel").value,
+    apiKey: document.getElementById("aiApiKey").value,
+  });
+  renderSettings();
+  toast("Configuracoes de IA salvas localmente.");
+});
+
+document.getElementById("clearAiSettings")?.addEventListener("click", () => {
+  clearAiSettings();
+  renderSettings();
+  toast("Chave de IA removida deste navegador.");
+});
+
+document.getElementById("loadNutritionBase")?.addEventListener("click", renderNutritionSearch);
+document.getElementById("nutritionSearch")?.addEventListener("input", renderNutritionSearch);
+document.getElementById("enableNotifications")?.addEventListener("click", requestNotificationPermission);
+document.getElementById("testNotification")?.addEventListener("click", sendTestNotification);
+
+document.getElementById("closeDietImportModal")?.addEventListener("click", closeDietImportModal);
+document.getElementById("cancelDietImport")?.addEventListener("click", closeDietImportModal);
+document.getElementById("dietImportFile")?.addEventListener("change", async (event) => {
+  const [file] = event.target.files || [];
+  if (!file) return;
+  document.getElementById("dietImportText").value = await file.text();
+});
+document.getElementById("dietImportForm")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await importDietWithAi();
+  } catch (error) {
+    document.getElementById("dietImportStatus").textContent = error.message;
+  }
+});
 
 watchSession({
   onUser(user) {
