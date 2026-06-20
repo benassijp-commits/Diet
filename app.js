@@ -6,16 +6,18 @@ import {
   watchSession,
 } from "./cloud-store.js";
 import { BASE_STOCK_ITEMS, MEALS as BASE_MEALS } from "./data-model.js";
-
-const STORE_KEY = "joao-diet-app-v2";
-const LEGACY_STORE_KEY = "joao-diet-app-v1";
-const OPTION_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-const DAILY_TARGETS = {
-  kcal: 2400,
-  protein: 202,
-  carbs: 241,
-  fat: 68,
-};
+import { DAILY_TARGETS, LEGACY_STORE_KEY, OPTION_LETTERS, STORE_KEY } from "./src/config.js";
+import {
+  clone,
+  escapeAttr,
+  escapeHtml,
+  formatCurrency,
+  formatQty,
+  formatTime,
+  normalizeText,
+  timestamp,
+  todayKey,
+} from "./src/utils.js";
 
 const initialState = {
   version: 2,
@@ -218,10 +220,6 @@ function findStockItemIdByLegacyKey(key) {
   return match?.id;
 }
 
-function clone(value) {
-  return JSON.parse(JSON.stringify(value));
-}
-
 function saveState() {
   localStorage.setItem(STORE_KEY, JSON.stringify(state));
   scheduleCloudSave();
@@ -244,10 +242,6 @@ function scheduleCloudSave() {
   }, 450);
 }
 
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function currentDayLog(source = state) {
   const day = todayKey();
   source.dailyLogs[day] = source.dailyLogs[day] || { water: 0, completedMeals: {} };
@@ -266,43 +260,6 @@ function getOptionKeys(meal) {
 function nextOptionKey(meal) {
   const used = new Set(getOptionKeys(meal));
   return OPTION_LETTERS.find((letter) => !used.has(letter)) || `Op${Date.now()}`;
-}
-
-function timestamp() {
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date());
-}
-
-function formatTime(value) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "--:--";
-  return new Intl.DateTimeFormat("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
-
-function formatQty(value) {
-  const rounded = Math.round(Number(value || 0) * 10) / 10;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-}
-
-function formatCurrency(value) {
-  return new Intl.NumberFormat("pt-PT", {
-    style: "currency",
-    currency: "EUR",
-  }).format(Number(value || 0));
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
 }
 
 function getSelectedItems() {
@@ -1482,14 +1439,6 @@ function addInlineStockItem() {
   toast("Ingrediente adicionado ao estoque.");
 }
 
-function escapeAttr(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
 function deleteMeal(mealId) {
   const meal = getMeals().find((current) => current.id === mealId);
   if (!meal) return;
@@ -1532,14 +1481,6 @@ function labelForStockItem(stockItemId) {
 
 function unitForStockItem(stockItemId) {
   return state.stockItems[stockItemId]?.unit || "";
-}
-
-function normalizeText(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
 }
 
 function toast(message) {
