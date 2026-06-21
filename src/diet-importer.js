@@ -14,8 +14,11 @@ export async function importDietFromText({ text, settings }) {
         role: "system",
         content: [
           "Voce transforma dietas de bodybuilding em JSON estrito.",
+          "A entrada pode vir de texto livre, PDF ou planilha Excel convertida para texto/CSV.",
+          "Interprete tabelas, colunas, abas, blocos de refeicao e listas mesmo quando a formatacao estiver irregular.",
           "Responda somente JSON valido.",
           "Nao invente ingredientes que nao estejam no texto.",
+          "Preserve observacoes relevantes em notes quando nao couberem em refeicoes ou ingredientes.",
           "Se houver opcoes A/B/C, preserve as opcoes.",
           "Se nao houver opcoes, use somente a opcao A.",
           "Quantidades devem ser numeros quando possivel.",

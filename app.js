@@ -8,7 +8,20 @@ import {
 import { BASE_STOCK_ITEMS, MEALS as BASE_MEALS } from "./data-model.js";
 import { clearAiSettings, loadAiSettings, saveAiSettings } from "./src/ai-settings.js";
 import { DAILY_TARGETS, LEGACY_STORE_KEY, OPTION_LETTERS, STORE_KEY } from "./src/config.js";
+import { extractDietFileText } from "./src/diet-file-text.js";
 import { importDietFromText } from "./src/diet-importer.js";
+import {
+  displayNutritionName,
+  findIngredientNameMatch,
+  findNutritionItemById,
+  getNutritionBase,
+  loadNutritionBase,
+  normalizeIngredientUnit,
+  nutritionAliasValues,
+  preloadNutritionCatalog,
+  resolveIngredientNutrition,
+  scaleNutrition,
+} from "./src/nutrition-service.js";
 import {
   clone,
   escapeAttr,
@@ -20,6 +33,7 @@ import {
   timestamp,
   todayKey,
 } from "./src/utils.js";
+
 
 const initialState = {
   version: 2,
@@ -58,106 +72,6 @@ let lastCloudSaveStartedAt = 0;
 let editingMealId = null;
 let editingOptionKey = "A";
 let pendingPurchaseRows = [];
-let nutritionBase = null;
-let nutritionBaseLoadStarted = false;
-
-const DUTCH_NUTRITION_TRANSLATIONS = {
-  aalbessen: "Groselha vermelha",
-  aardappelen: "Batatas",
-  aardappelkroketten: "Croquetes de batata",
-  aardappelpuree: "Pure de batata",
-  aardappelzetmeel: "Amido de batata",
-  amandelbroodje: "Pao de amendoa",
-  amandelen: "Amendoas",
-  americain: "Carne bovina temperada",
-  "americain prepare": "Carne bovina temperada preparada",
-  "amsoi (gekookt)": "Mostarda chinesa cozida",
-  ananas: "Abacaxi",
-  andijvie: "Escarola",
-  anijshagel: "Confeito de anis",
-  "ansjovis in olie": "Anchovas em oleo",
-  appel: "Maca",
-  appelmoes: "Pure de maca",
-  artisjok: "Alcachofra",
-  asperges: "Aspargos",
-  aubergine: "Berinjela",
-  avocado: "Abacate",
-  bacon: "Bacon",
-  aardappel: "Batata",
-  aardbeien: "Morangos",
-  banaan: "Banana",
-  biefstuk: "Bife bovino",
-  bieten: "Beterraba",
-  bloemkool: "Couve-flor",
-  bonen: "Feijoes",
-  bosbessen: "Mirtilos",
-  boter: "Manteiga",
-  broccoli: "Brocolis",
-  "brood (volkoren)": "Pao integral",
-  "brood (wit)": "Pao branco",
-  "broodje (bruin)": "Paozinho escuro",
-  "broodje (meergranen)": "Paozinho multigraos",
-  "broodje (tarwe)": "Paozinho de trigo",
-  "broodje (volkoren)": "Paozinho integral",
-  "broodje (wit)": "Paozinho branco",
-  bruinbrood: "Pao escuro",
-  cashewnoten: "Castanha de caju",
-  "cashew-noten": "Castanha de caju",
-  champignons: "Cogumelos",
-  cheddar: "Cheddar",
-  "chili con carne": "Chili com carne",
-  "chinese kool": "Couve chinesa",
-  chocolade: "Chocolate",
-  ei: "Ovo",
-  "ei-eiwit": "Clara de ovo",
-  eieren: "Ovos",
-  eiwit: "Clara de ovo",
-  havermout: "Aveia",
-  kip: "Frango",
-  "kip-kap": "Embutido de frango",
-  "kip-kerriesalade": "Salada de frango com curry",
-  kipburger: "Hamburguer de frango",
-  "kipnugget - kipkantje": "Nugget de frango",
-  kippebouillion: "Caldo de frango",
-  kippelever: "Figado de frango",
-  "kipfilet (beleg)": "Peito de frango fatiado",
-  kipfilet: "Peito de frango",
-  "kip filet": "Peito de frango",
-  kippenham: "Fiambre de frango",
-  kippepoot: "Coxa de frango",
-  kiprollade: "Rolo de frango",
-  "kipschnitzel (gepaneerd)": "Schnitzel de frango empanado",
-  "roti (kip)": "Roti de frango",
-  "sate kip-met saus": "Espetinho de frango com molho",
-  rijst: "Arroz",
-  "rijst (basmati)": "Arroz basmati",
-  "rijst (zilvervlies)": "Arroz integral",
-  rijstwafel: "Bolacha de arroz",
-  zalm: "Salmao",
-  "zalm (gerookt)": "Salmao defumado",
-  zalmfilet: "File de salmao",
-  rundvlees: "Carne bovina",
-  rundergehakt: "Carne bovina moida",
-  tonijn: "Atum",
-  "tonijn in olie": "Atum em oleo",
-  "tonijn, eigen nat": "Atum em agua",
-  melk: "Leite",
-  "melk (magere)": "Leite magro",
-  "melk (volle)": "Leite integral",
-  sojamelk: "Leite de soja",
-  pasta: "Massa",
-  "pasta (volkoren)": "Massa integral",
-  macaroni: "Macarrao",
-  olijfolie: "Azeite de oliva",
-  mayonaise: "Maionese",
-  "mayonaise 50%": "Maionese light",
-  "mayonaise 80%": "Maionese",
-  pindakaas: "Pasta de amendoim",
-  wortel: "Cenoura",
-  yoghurt: "Iogurte",
-  "yoghurt (mager)": "Iogurte magro",
-  "yoghurt (vol)": "Iogurte integral",
-};
 
 let state = loadState();
 
@@ -179,6 +93,7 @@ function readJson(key) {
     return null;
   }
 }
+
 
 function migrateState(rawState) {
   const next = {
@@ -220,7 +135,6 @@ function migrateState(rawState) {
   normalizeBuiltInText(next);
   migrateIngredientPrices(next);
   enrichStockNutrition(next);
-  normalizeTranslatedStockNames(next);
   ensureDietVersionState(next);
 
   if (rawState.completed && !rawState.dailyLogs) {
@@ -271,13 +185,6 @@ function enrichStockNutrition(next) {
   }
 }
 
-function normalizeTranslatedStockNames(next) {
-  for (const item of Object.values(next.stockItems || {})) {
-    const translated = translateDutchNutritionName(item.name);
-    if (translated) item.name = translated;
-  }
-}
-
 function ensureDietVersionState(next) {
   if (!Array.isArray(next.dietVersions)) next.dietVersions = [];
   if (next.dietVersions.length && next.activeDietVersionId) return;
@@ -292,7 +199,7 @@ function ensureDietVersionState(next) {
     archivedAt: "",
     source: "baseline",
     meals: clone(next.meals || initialState.meals),
-    notes: "Versao inicial criada a partir da dieta funcional existente.",
+    notes: "Versão inicial criada a partir da dieta funcional existente.",
   }];
 }
 
@@ -302,28 +209,6 @@ function normalizeBuiltInText(next) {
       ...(next.stockItems[item.id] || {}),
       ...item,
     };
-  }
-
-  for (const baseMeal of BASE_MEALS) {
-    const meal = next.meals.find((current) => current.id === baseMeal.id);
-    if (!meal) continue;
-
-    meal.title = baseMeal.title;
-    meal.subtitle = baseMeal.subtitle;
-    meal.macros = baseMeal.macros;
-
-    for (const option of Object.keys(baseMeal.options)) {
-      if (!meal.options[option]) meal.options[option] = [];
-      baseMeal.options[option].forEach((baseItem, index) => {
-        if (!meal.options[option][index]) return;
-        meal.options[option][index] = {
-          ...meal.options[option][index],
-          label: baseItem.label,
-          unit: baseItem.unit,
-          stockItemId: baseItem.stockItemId,
-        };
-      });
-    }
   }
 }
 
@@ -568,6 +453,7 @@ function allIngredientCatalogItems() {
 }
 
 function nutritionCatalogItems() {
+  const nutritionBase = getNutritionBase();
   if (!nutritionBase?.items?.length) return [];
   const knownNames = new Set(allStockItems().map((item) => normalizeText(item.name)));
   return nutritionBase.items
@@ -578,27 +464,6 @@ function nutritionCatalogItems() {
       unit: normalizeIngredientUnit(item.referenceAmount?.unit || "g"),
       aliases: nutritionAliasValues(item),
     }));
-}
-
-function normalizeIngredientUnit(unit) {
-  const normalized = normalizeText(unit || "g");
-  const unitMap = {
-    g: "g",
-    gram: "g",
-    gr: "g",
-    kg: "kg",
-    kilogram: "kg",
-    ml: "ml",
-    milliliter: "ml",
-    l: "L",
-    liter: "L",
-    litre: "L",
-    stuk: "unidade",
-    stuks: "unidade",
-    unidade: "unidade",
-    unidades: "unidade",
-  };
-  return unitMap[normalized] || "g";
 }
 
 function findCatalogItemBySearchLabel(value) {
@@ -620,16 +485,36 @@ function aliasText(aliases = []) {
   return aliases.map((alias) => typeof alias === "string" ? alias : alias?.value || "").join(" ");
 }
 
-function ingredientSuggestions(query, limit = 80) {
+function ingredientSuggestions(query, limit = 120) {
   const normalized = normalizeText(query || "");
   const source = normalized ? allIngredientCatalogItems() : visibleStockItems();
+
   return source
     .filter((item) => ingredientMatchesQuery(item, normalized))
     .sort((a, b) => {
       const aName = normalizeText(a.name);
       const bName = normalizeText(b.name);
-      const aScore = !normalized ? 0 : aName === normalized ? 0 : aName.startsWith(normalized) ? 1 : ingredientMatchesQuery(a, normalized) ? 2 : 3;
-      const bScore = !normalized ? 0 : bName === normalized ? 0 : bName.startsWith(normalized) ? 1 : ingredientMatchesQuery(b, normalized) ? 2 : 3;
+
+      const aScore = !normalized
+        ? 0
+        : aName === normalized
+          ? 0
+          : aName.startsWith(normalized)
+            ? 1
+            : ingredientMatchesQuery(a, normalized)
+              ? 2
+              : 3;
+
+      const bScore = !normalized
+        ? 0
+        : bName === normalized
+          ? 0
+          : bName.startsWith(normalized)
+            ? 1
+            : ingredientMatchesQuery(b, normalized)
+              ? 2
+              : 3;
+
       if (aScore !== bScore) return aScore - bScore;
       return a.name.localeCompare(b.name);
     })
@@ -984,7 +869,7 @@ function fillDailyShopping() {
       return `
         <tr>
           <td data-label="Ingrediente">${row.name}</td>
-          <td data-label="Necessario hoje"><strong>${formatQty(row.qty)}</strong> ${row.unit}</td>
+          <td data-label="Necessário hoje"><strong>${formatQty(row.qty)}</strong> ${row.unit}</td>
           <td data-label="Em estoque">${formatQty(inStock)} ${row.unit}</td>
           <td data-label="Status"><span class="status-pill ${ok ? "status-ok" : "status-low"}">${ok ? "Ok" : "Comprar"}</span></td>
         </tr>
@@ -1002,10 +887,10 @@ function fillWeeklyShopping() {
       return `
         <tr class="${row.toBuy > 0 ? "purchase-needed-row" : ""}">
           <td data-label="Ingrediente">${row.name}</td>
-          <td data-label="Necessario"><strong>${formatQty(row.qty)}</strong> ${row.unit}</td>
+          <td data-label="Necessário"><strong>${formatQty(row.qty)}</strong> ${row.unit}</td>
           <td data-label="Em estoque">${formatQty(row.inStock)} ${row.unit}</td>
           <td data-label="Comprar" class="buy-cell"><strong>${formatQty(row.toBuy)}</strong> ${row.unit}</td>
-          <td data-label="Preco">${row.priceLabel}</td>
+          <td data-label="Preço">${row.priceLabel}</td>
           <td data-label="Estimativa">${row.unitPrice ? formatCurrency(row.estimate) : "-"}</td>
         </tr>
       `;
@@ -1095,13 +980,13 @@ function buildShoppingListPrintHtml() {
       </head>
       <body>
         <h1>Lista de compras</h1>
-        <p>Plano Alimentar Joao - gerada em ${escapeHtml(date)}</p>
+        <p>Plano Alimentar João - gerada em ${escapeHtml(date)}</p>
         <table>
           <thead>
             <tr>
               <th>Ingrediente</th>
               <th>Comprar</th>
-              <th>Preco</th>
+              <th>Preço</th>
               <th>Estimativa</th>
             </tr>
           </thead>
@@ -1119,14 +1004,14 @@ function buildShoppingListPrintHtml() {
 
 function printShoppingListPdf() {
   const frame = document.createElement("iframe");
-  frame.title = "Lista de compras para impressao";
+  frame.title = "Lista de compras para impressão";
   frame.className = "print-frame";
   document.body.appendChild(frame);
 
   const doc = frame.contentDocument || frame.contentWindow?.document;
   if (!doc) {
     frame.remove();
-    toast("Nao foi possivel preparar a impressao.");
+    toast("Não foi possível preparar a impressão.");
     return;
   }
 
@@ -1237,7 +1122,7 @@ function renderStock() {
           <td data-label="Ingrediente">${item.name}</td>
           <td data-label="Estoque"><strong>${formatQty(qty)}</strong></td>
           <td data-label="Unidade">${item.unit}</td>
-          <td data-label="Preco">${priceLabel}</td>
+          <td data-label="Preço">${priceLabel}</td>
           <td data-label="Status"><span class="status-pill ${status.className}">${status.label}</span></td>
         </tr>
       `;
@@ -1639,6 +1524,7 @@ function renderMealOptionsEditor(meal) {
 
   container.querySelectorAll("[data-add-ingredient]").forEach((button) => {
     button.addEventListener("click", () => {
+      persistVisibleOptionEdits(meal);
       const stockItem = allStockItems()[0];
       meal.options[button.dataset.addIngredient].push({
         label: stockItem?.name || "Novo ingrediente",
@@ -1653,6 +1539,7 @@ function renderMealOptionsEditor(meal) {
   container.querySelectorAll("[data-delete-ingredient]").forEach((button) => {
     button.addEventListener("click", () => {
       const [option, index] = button.dataset.deleteIngredient.split(":");
+      persistVisibleOptionEdits(meal);
       meal.options[option].splice(Number(index), 1);
       renderMealOptionsEditor(meal);
     });
@@ -1661,6 +1548,7 @@ function renderMealOptionsEditor(meal) {
   container.querySelectorAll("[data-delete-option]").forEach((button) => {
     button.addEventListener("click", () => {
       const option = button.dataset.deleteOption;
+      persistVisibleOptionEdits(meal);
       delete meal.options[option];
       delete state.shoppingCart[meal.id]?.[option];
       if (state.selections[meal.id] === option) state.selections[meal.id] = getOptionKeys(meal)[0];
@@ -1674,25 +1562,41 @@ function syncIngredientSearchInput(input) {
   const row = input.closest("[data-ingredient-row]");
   const stockItem = findCatalogItemBySearchLabel(input.value);
   const hidden = row?.querySelector("[data-field='stockItemId']");
+  const previousStockItemId = hidden?.value || "";
   if (hidden) hidden.value = stockItem?.id || "";
   if (!stockItem) return;
+  const labelInput = row.querySelector("[data-field='label']");
+  if (labelInput && previousStockItemId !== stockItem.id) labelInput.value = stockItem.name;
   const unitInput = row.querySelector("[data-field='unit']");
-  if (unitInput && !unitInput.value.trim()) unitInput.value = stockItem.unit;
+  if (unitInput && (!unitInput.value.trim() || previousStockItemId !== stockItem.id)) unitInput.value = stockItem.unit;
 }
 
 async function ensureNutritionBaseForIngredientQuery(input) {
   const query = input?.value?.trim() || "";
-  if (nutritionBase || query.length < 2) return;
+  if (getNutritionBase() || query.length < 2) return;
   try {
     await loadNutritionBase();
   } catch {
-    // O catalogo local continua funcionando mesmo se a base nutricional falhar.
+    // O catálogo local continua funcionando mesmo se a base nutricional falhar.
   }
 }
 
 function openIngredientCombobox(input) {
   const menu = document.getElementById("ingredientComboboxMenu");
   if (!menu) return;
+
+  // Mover o menu para dentro do dialog aberto, se houver um, para que fique na "top layer" e não seja renderizado por trás dele
+  const activeDialog = document.querySelector("dialog[open]");
+  if (activeDialog) {
+    if (menu.parentElement !== activeDialog) {
+      activeDialog.appendChild(menu);
+    }
+  } else {
+    if (menu.parentElement !== document.body) {
+      document.body.appendChild(menu);
+    }
+  }
+
   const items = ingredientSuggestions(input.value);
   if (!items.length) {
     menu.hidden = true;
@@ -1700,6 +1604,8 @@ function openIngredientCombobox(input) {
   }
   const rect = input.getBoundingClientRect();
   menu.style.left = `${rect.left}px`;
+  // Como o menu tem position: fixed, as coordenadas devem ser relativas à janela de visualização (viewport).
+  // Se houver scroll no modal, o getBoundingClientRect() já retorna a posição atualizada no viewport.
   menu.style.top = `${rect.bottom + 4}px`;
   menu.style.width = `${rect.width}px`;
   menu.innerHTML = items
@@ -1751,7 +1657,9 @@ function persistVisibleOptionEdits(meal) {
   const option = optionBlock.dataset.editorOption;
   meal.options[option] = [...optionBlock.querySelectorAll("[data-ingredient-row]")]
     .map((row) => {
-      const stockItemId = resolveStockItemSelection(row.querySelector("[data-field='stockItemId']").value);
+      const stockSearchValue = row.querySelector("[data-field='stockItemSearch']").value;
+      const hiddenStockItemId = row.querySelector("[data-field='stockItemId']").value;
+      const stockItemId = resolveStockItemSelection(stockSearchValue) || resolveStockItemSelection(hiddenStockItemId);
       const stockItem = state.stockItems[stockItemId];
       return {
         label: row.querySelector("[data-field='label']").value.trim(),
@@ -1766,6 +1674,7 @@ function persistVisibleOptionEdits(meal) {
 function addMealOptionToEditor() {
   const meal = getMeals().find((current) => current.id === editingMealId);
   if (!meal) return;
+  persistVisibleOptionEdits(meal);
   const option = nextOptionKey(meal);
   meal.options[option] = [];
   state.shoppingCart[meal.id] = normalizedCart(meal.id);
@@ -1774,7 +1683,7 @@ function addMealOptionToEditor() {
   renderMealOptionsEditor(meal);
 }
 
-function addInlineStockItem() {
+async function addInlineStockItem() {
   const nameInput = document.getElementById("inlineStockName");
   const unitInput = document.getElementById("inlineStockUnit");
   const name = nameInput.value.trim();
@@ -1784,26 +1693,154 @@ function addInlineStockItem() {
     return;
   }
 
-  const existing = Object.values(state.stockItems).find((item) => normalizeText(item.name) === normalizeText(name));
-  const id = existing?.id || createStockItemId(name);
-  state.stockItems[id] = {
-    ...(state.stockItems[id] || {}),
-    id,
-    name: existing?.name || name,
-    unit: existing?.unit || unit,
-    nutrition: state.stockItems[id]?.nutrition || { kcal: 0, protein: 0, carbs: 0, fat: 0 },
-  };
+  const aiSettings = currentAiSettings();
+  if (aiSettings?.apiKey) toast("Verificando ingredientes similares com IA.");
+  const match = await findIngredientNameMatch(Object.values(state.stockItems), name, aiSettings);
+  let existing = match?.type === "exact" ? match.item : null;
+  let id = existing?.id;
+
+  // 2. Se nao houver correspondencia exata, confirmar ingrediente similar para evitar duplicacao
+  if (!existing && (match?.type === "similar" || match?.type === "ai")) {
+    const detail = match.type === "ai" && match.reason ? `\n\nMotivo da IA: ${match.reason}` : "";
+    if (confirm(`Ja existe um ingrediente parecido no seu catalogo: "${match.item.name}" (${match.item.unit}). Deseja usar este ingrediente existente em vez de criar um novo duplicado?${detail}`)) {
+      existing = match.item;
+      id = match.item.id;
+    }
+  }
+
+  // 3. Se for um ingrediente realmente novo, registrar no catalogo e buscar macros
+  if (!id) {
+    id = createStockItemId(name);
+    let nutritionResult = {
+      nutrition: { kcal: 0, protein: 0, carbs: 0, fat: 0 },
+      nutritionSource: "default_empty",
+      sourceType: "empty",
+    };
+
+    try {
+      if (aiSettings?.apiKey) toast("Buscando informacoes nutricionais com a IA se a base local nao encontrar.");
+      nutritionResult = await resolveIngredientNutrition({ name, unit, aiSettings });
+    } catch (err) {
+      console.error("Nutrition resolution failed:", err);
+      toast("Erro ao buscar nutricao. Criado com valores zerados.");
+    }
+
+    state.stockItems[id] = {
+      id,
+      name,
+      unit,
+      nutrition: nutritionResult.nutrition,
+      nutritionSource: nutritionResult.nutritionSource,
+    };
+
+    if (nutritionResult.sourceType === "local") toast("Ingrediente adicionado a partir do catalogo nutricional.");
+    if (nutritionResult.sourceType === "ai") toast("Ingrediente adicionado com estimativa da IA.");
+    if (nutritionResult.sourceType === "empty") toast("Ingrediente adicionado com valores zerados.");
+  }
+
   nameInput.value = "";
   unitInput.value = "";
 
   const meal = getMeals().find((current) => current.id === editingMealId);
   if (meal) {
     meal.options[editingOptionKey] = meal.options[editingOptionKey] || [];
-    meal.options[editingOptionKey].push({ label: name, qty: 0, unit, stockItemId: id });
+
+    // Garantir que não duplique a linha de ingrediente dentro da mesma opção de refeição
+    const alreadyInOption = meal.options[editingOptionKey].find(item => item.stockItemId === id);
+    if (!alreadyInOption) {
+      meal.options[editingOptionKey].push({
+        label: existing?.name || name,
+        qty: 0,
+        unit: existing?.unit || unit,
+        stockItemId: id
+      });
+    } else {
+      toast("Este ingrediente já está cadastrado nesta opção de refeição.");
+    }
     renderMealOptionsEditor(meal);
   }
+}
 
-  toast(existing ? "Ingrediente existente reutilizado." : "Ingrediente adicionado ao catálogo.");
+async function resolveStockEditorItem({ selectedId, name, unit, price }) {
+  const isNew = selectedId === "__new";
+  if (!isNew) {
+    const existing = state.stockItems[selectedId] || {};
+    return {
+      id: selectedId,
+      item: {
+        ...existing,
+        id: selectedId,
+        name,
+        unit,
+        nutrition: existing.nutrition,
+        nutritionSource: existing.nutritionSource,
+        aliases: existing.aliases,
+        price,
+      },
+      created: false,
+      reused: false,
+    };
+  }
+
+  const aiSettings = currentAiSettings();
+  if (aiSettings?.apiKey) toast("Verificando ingredientes similares com IA.");
+  const match = await findIngredientNameMatch(Object.values(state.stockItems), name, aiSettings);
+  let existing = match?.type === "exact" ? match.item : null;
+
+  if (!existing && (match?.type === "similar" || match?.type === "ai")) {
+    const detail = match.type === "ai" && match.reason ? `\n\nMotivo da IA: ${match.reason}` : "";
+    const useExisting = confirm(`Ja existe um ingrediente parecido no seu catalogo: "${match.item.name}" (${match.item.unit}). Deseja atualizar este ingrediente em vez de criar um novo?${detail}`);
+    if (useExisting) existing = match.item;
+  }
+
+  if (existing) {
+    return {
+      id: existing.id,
+      item: {
+        ...existing,
+        name: existing.name,
+        unit: existing.unit || unit,
+        nutrition: existing.nutrition,
+        nutritionSource: existing.nutritionSource,
+        aliases: existing.aliases,
+        price,
+      },
+      created: false,
+      reused: true,
+    };
+  }
+
+  let nutritionResult = {
+    nutrition: { kcal: 0, protein: 0, carbs: 0, fat: 0 },
+    nutritionSource: "default_empty",
+    matchedLocal: null,
+    sourceType: "empty",
+  };
+
+  try {
+    if (aiSettings?.apiKey) toast("Buscando nutricao na base local; IA apenas se nao encontrar.");
+    nutritionResult = await resolveIngredientNutrition({ name, unit, aiSettings });
+  } catch (err) {
+    console.error("Nutrition resolution failed:", err);
+    toast("Erro ao buscar nutricao. Criado com valores zerados.");
+  }
+
+  const id = createStockItemId(name);
+  return {
+    id,
+    item: {
+      id,
+      name,
+      unit,
+      nutrition: nutritionResult.nutrition,
+      nutritionSource: nutritionResult.nutritionSource,
+      aliases: nutritionResult.matchedLocal?.aliases || [],
+      price,
+    },
+    created: true,
+    reused: false,
+    sourceType: nutritionResult.sourceType,
+  };
 }
 
 function deleteMeal(mealId) {
@@ -1893,7 +1930,7 @@ function renderSettings() {
   document.getElementById("aiApiKey").value = settings.apiKey;
   document.getElementById("aiSettingsStatus").textContent = settings.apiKey
     ? "IA configurada localmente para este navegador."
-    : "IA ainda nao configurada.";
+    : "IA ainda não configurada.";
   const types = state.appSettings.notificationTypes || {};
   const mealReminders = document.getElementById("pushMealReminders");
   const stockAlerts = document.getElementById("pushStockAlerts");
@@ -1910,7 +1947,7 @@ function renderActiveDietControl() {
   select.innerHTML = (state.dietVersions || [])
     .map((version) => `<option value="${version.id}">${version.status === "active" ? "Ativa" : "Arquivada"} · ${escapeHtml(version.name)}</option>`)
     .join("");
-  select.value = [...select.options].some((option) => option.value === current) ? current : state.activeDietVersionId;
+  select.value = [...select.options].some((option) => option.value === current) ? current : "";
 }
 
 function renderDietVersions() {
@@ -1921,13 +1958,17 @@ function renderDietVersions() {
     .map((version) => `
       <div class="alert-item ${version.id === state.activeDietVersionId ? "active" : ""}">
         <strong>${escapeHtml(version.name)}</strong>
-        <span>${version.status === "active" ? "Ativa" : "Arquivada"} · inicio ${escapeHtml(version.activatedAt || "-")}${version.archivedAt ? ` · fim ${escapeHtml(version.archivedAt)}` : ""}</span>
+        <span>${version.status === "active" ? "Ativa" : "Arquivada"} · início ${escapeHtml(version.activatedAt || "-")}${version.archivedAt ? ` · fim ${escapeHtml(version.archivedAt)}` : ""}</span>
         ${version.id !== state.activeDietVersionId ? `<button class="secondary-button" data-activate-diet="${version.id}" type="button">Reativar dieta</button>` : ""}
+        <button class="secondary-button" data-delete-diet="${version.id}" type="button">Excluir dieta</button>
       </div>
     `)
     .join("") || '<p class="modal-note">Nenhuma dieta versionada ainda.</p>';
   container.querySelectorAll("[data-activate-diet]").forEach((button) => {
     button.addEventListener("click", () => activateDietVersion(button.dataset.activateDiet));
+  });
+  container.querySelectorAll("[data-delete-diet]").forEach((button) => {
+    button.addEventListener("click", () => deleteDietVersion(button.dataset.deleteDiet));
   });
 }
 
@@ -1942,7 +1983,7 @@ function globalAlertRows() {
     if (row.qty > 0 && stock < row.qty) {
       alerts.push({
         title: `${row.name}: abaixo do carrinho`,
-        detail: `Estoque ${formatQty(stock)} ${row.unit}; necessario ${formatQty(row.qty)} ${row.unit}.`,
+        detail: `Estoque ${formatQty(stock)} ${row.unit}; necessário ${formatQty(row.qty)} ${row.unit}.`,
       });
     }
   }
@@ -1983,22 +2024,6 @@ function currentAiSettings() {
   };
 }
 
-async function loadNutritionBase() {
-  if (nutritionBase) return nutritionBase;
-  const response = await fetch("data/nutrition/dutch-coach-nutrition.normalized.json");
-  if (!response.ok) throw new Error("Nao foi possivel carregar a base nutricional.");
-  nutritionBase = await response.json();
-  return nutritionBase;
-}
-
-function preloadNutritionCatalog() {
-  if (nutritionBase || nutritionBaseLoadStarted) return;
-  nutritionBaseLoadStarted = true;
-  loadNutritionBase()
-    .then(() => renderStockOptions())
-    .catch((error) => console.warn("Nutrition catalog preload failed", error));
-}
-
 async function renderNutritionSearch() {
   const status = document.getElementById("nutritionBaseStatus");
   const results = document.getElementById("nutritionResults");
@@ -2008,22 +2033,22 @@ async function renderNutritionSearch() {
     const base = await loadNutritionBase();
     const query = normalizeText(document.getElementById("nutritionSearch")?.value || "");
     const items = (base.items || [])
-      .filter((item) => !query || normalizeText(`${item.names?.nl || ""} ${item.names?.pt || ""} ${item.names?.en || ""}`).includes(query))
+      .filter((item) => !query || normalizeText(`${displayNutritionName(item)} ${item.names?.pt || item.name || ""}`).includes(query))
       .slice(0, 20);
-    status.textContent = `${base.itemCount || base.items?.length || 0} alimentos carregados. Traducoes em portugues pendentes.`;
+    status.textContent = `${base.itemCount || base.items?.length || 0} alimentos carregados em português.`;
     results.innerHTML = `
       <table>
-        <thead><tr><th>Nome</th><th>Base</th><th>Kcal</th><th>Proteina</th><th>Carbo</th><th>Gordura</th><th></th></tr></thead>
+        <thead><tr><th>Nome</th><th>Base</th><th>Kcal</th><th>Proteína</th><th>Carbo</th><th>Gordura</th><th></th></tr></thead>
         <tbody>
           ${items.map((item) => `
             <tr>
               <td data-label="Nome">${escapeHtml(displayNutritionName(item))}</td>
               <td data-label="Base">${formatQty(item.referenceAmount?.quantity)} ${escapeHtml(item.referenceAmount?.unit || "")}</td>
               <td data-label="Kcal">${formatQty(item.nutrition?.kcal)}</td>
-              <td data-label="Proteina">${formatQty(item.nutrition?.protein)}</td>
+              <td data-label="Proteína">${formatQty(item.nutrition?.protein)}</td>
               <td data-label="Carbo">${formatQty(item.nutrition?.carbs)}</td>
               <td data-label="Gordura">${formatQty(item.nutrition?.fat)}</td>
-              <td data-label="Acao"><button class="secondary-button mini-button" data-add-nutrition-stock="${escapeAttr(item.id)}" type="button">Adicionar</button></td>
+              <td data-label="Ação"><button class="secondary-button mini-button" data-add-nutrition-stock="${escapeAttr(item.id)}" type="button">Adicionar</button></td>
             </tr>
           `).join("")}
         </tbody>
@@ -2036,33 +2061,8 @@ async function renderNutritionSearch() {
   }
 }
 
-function displayNutritionName(item) {
-  const nl = item.names?.nl || "";
-  return item.names?.pt || item.names?.en || translateDutchNutritionName(nl) || nl || item.id;
-}
-
-function nutritionAliasValues(item) {
-  const values = [
-    item.names?.pt,
-    item.names?.en,
-    item.names?.nl,
-    translateDutchNutritionName(item.names?.nl || ""),
-    ...(item.aliases || []).map((alias) => typeof alias === "string" ? alias : alias?.value),
-  ].filter(Boolean);
-  return [...new Set(values)];
-}
-
-function translateDutchNutritionName(name) {
-  const normalized = normalizeText(name);
-  if (DUTCH_NUTRITION_TRANSLATIONS[normalized]) return DUTCH_NUTRITION_TRANSLATIONS[normalized];
-  for (const [needle, translated] of Object.entries(DUTCH_NUTRITION_TRANSLATIONS)) {
-    if (normalized.includes(needle)) return translated;
-  }
-  return "";
-}
-
 function addNutritionItemToStock(nutritionId) {
-  const item = nutritionBase?.items?.find((current) => current.id === nutritionId);
+  const item = findNutritionItemById(nutritionId);
   if (!item) return;
   upsertStockItemFromNutrition(item);
   toast("Ingrediente salvo no estoque.");
@@ -2072,9 +2072,12 @@ function addNutritionItemToStock(nutritionId) {
 function upsertStockItemFromNutrition(item) {
   const name = displayNutritionName(item);
   const existing = Object.values(state.stockItems).find((stockItem) => normalizeText(stockItem.name) === normalizeText(name));
+  const scaledNutrition = scaleNutrition(item.nutrition, item.referenceAmount);
   if (existing) {
-    existing.nutrition = { ...(existing.nutrition || {}), ...(item.nutrition || {}) };
-    existing.nutritionSource = item.source;
+    if (!existing.nutrition || !existing.nutritionSource || existing.nutritionSource === "default_empty") {
+      existing.nutrition = { ...(existing.nutrition || {}), ...scaledNutrition };
+      existing.nutritionSource = item.source;
+    }
     return existing.id;
   }
   const id = createStockItemId(name);
@@ -2082,7 +2085,7 @@ function upsertStockItemFromNutrition(item) {
     id,
     name,
     unit: normalizeIngredientUnit(item.referenceAmount?.unit || "g"),
-    nutrition: item.nutrition || { kcal: 0, protein: 0, carbs: 0, fat: 0 },
+    nutrition: scaledNutrition,
     nutritionSource: item.source,
     aliases: item.aliases || [],
   };
@@ -2093,7 +2096,7 @@ function resolveStockItemSelection(value) {
   if (state.stockItems[value]) return value;
   if (value?.startsWith?.("nutrition:")) {
     const nutritionId = value.slice("nutrition:".length);
-    const item = nutritionBase?.items?.find((current) => current.id === nutritionId);
+    const item = findNutritionItemById(nutritionId);
     return item ? upsertStockItemFromNutrition(item) : "";
   }
   const catalogItem = findCatalogItemBySearchLabel(value);
@@ -2117,33 +2120,44 @@ async function importDietWithAi() {
     text: document.getElementById("dietImportText").value,
     settings: currentAiSettings(),
   });
-  activateImportedDiet(imported);
+  status.textContent = "Conferindo ingredientes e preenchendo macros...";
+  await activateImportedDiet(imported, status);
   closeDietImportModal();
   toast("Dieta importada e ativada.");
 }
 
-function activateImportedDiet(imported) {
+async function activateImportedDiet(imported, status) {
   const today = todayKey();
+  const aiSettings = currentAiSettings();
+  let ingredientCount = 0;
+
+  const meals = [];
+  for (const [index, meal] of imported.meals.entries()) {
+    const options = {};
+    for (const [option, items] of Object.entries(meal.options)) {
+      options[option] = [];
+      for (const item of items) {
+        ingredientCount += 1;
+        if (status) status.textContent = `Conferindo ingrediente ${ingredientCount}: ${item.label}`;
+        const stockItemId = await ensureStockItemForImportedIngredient(item.label, item.unit, aiSettings);
+        options[option].push({ ...item, stockItemId });
+      }
+    }
+    meals.push({
+      id: `meal_${Date.now()}_${index}`,
+      title: meal.title,
+      subtitle: meal.subtitle,
+      macros: meal.macros,
+      options,
+    });
+  }
+
   const previousActive = state.dietVersions.find((version) => version.id === state.activeDietVersionId);
   if (previousActive) {
     previousActive.status = "archived";
     previousActive.archivedAt = today;
     previousActive.meals = clone(state.meals);
   }
-
-  const meals = imported.meals.map((meal, index) => ({
-    id: `meal_${Date.now()}_${index}`,
-    title: meal.title,
-    subtitle: meal.subtitle,
-    macros: meal.macros,
-    options: Object.fromEntries(Object.entries(meal.options).map(([option, items]) => [
-      option,
-      items.map((item) => {
-        const stockItemId = ensureStockItemForIngredient(item.label, item.unit);
-        return { ...item, stockItemId };
-      }),
-    ])),
-  }));
 
   const id = `diet_${Date.now()}`;
   state.dietVersions.push({
@@ -2216,33 +2230,100 @@ function activateDietVersion(id) {
   toast(`${target.name} ativada.`);
 }
 
-function ensureStockItemForIngredient(name, unit) {
-  const normalized = normalizeText(name);
-  const existing = Object.values(state.stockItems).find((item) => normalizeText(item.name) === normalized);
-  if (existing) return existing.id;
+function deleteDietVersion(id) {
+  const target = state.dietVersions.find((version) => version.id === id);
+  if (!target) return;
+  if (!confirm(`Excluir a dieta "${target.name}"? Esta acao remove a dieta da lista.`)) return;
+
+  const wasActive = target.id === state.activeDietVersionId;
+  state.dietVersions = state.dietVersions.filter((version) => version.id !== target.id);
+
+  if (wasActive) {
+    state.activeDietVersionId = "";
+    state.meals = [];
+    state.selections = {};
+    state.shoppingCart = {};
+    state.collapsedMeals = {};
+    for (const log of Object.values(state.dailyLogs)) {
+      log.completedMeals = {};
+    }
+  }
+
+  render();
+  toast(wasActive ? "Dieta excluida e refeicoes limpas." : "Dieta excluida.");
+}
+
+async function ensureStockItemForImportedIngredient(name, unit, aiSettings) {
+  const match = await findIngredientNameMatch(Object.values(state.stockItems), name, aiSettings);
+  if (match?.item) {
+    await hydrateStockItemNutrition(match.item, name, unit, aiSettings);
+    return match.item.id;
+  }
+
+  const nutritionResult = await resolveIngredientNutrition({ name, unit, aiSettings }).catch((error) => {
+    console.warn("Imported ingredient nutrition failed:", error);
+    return {
+      nutrition: { kcal: 0, protein: 0, carbs: 0, fat: 0 },
+      nutritionSource: "default_empty",
+      matchedLocal: null,
+    };
+  });
+
   const id = createStockItemId(name);
-  state.stockItems[id] = { id, name, unit: unit || "g", nutrition: { kcal: 0, protein: 0, carbs: 0, fat: 0 } };
+  state.stockItems[id] = {
+    id,
+    name,
+    unit: unit || normalizeIngredientUnit(nutritionResult.matchedLocal?.referenceAmount?.unit || "g"),
+    nutrition: nutritionResult.nutrition,
+    nutritionSource: nutritionResult.nutritionSource,
+    aliases: nutritionResult.matchedLocal?.aliases || [],
+  };
   return id;
+}
+
+async function hydrateStockItemNutrition(item, name, unit, aiSettings) {
+  if (!shouldHydrateNutrition(item)) return;
+
+  const nutritionResult = await resolveIngredientNutrition({
+    name: item.name || name,
+    unit: item.unit || unit || "g",
+    aiSettings,
+  }).catch((error) => {
+    console.warn("Existing ingredient nutrition hydration failed:", error);
+    return null;
+  });
+
+  if (!nutritionResult?.nutrition) return;
+  item.nutrition = nutritionResult.nutrition;
+  item.nutritionSource = nutritionResult.nutritionSource;
+  if ((!item.aliases || !item.aliases.length) && nutritionResult.matchedLocal?.aliases) {
+    item.aliases = nutritionResult.matchedLocal.aliases;
+  }
+}
+
+function shouldHydrateNutrition(item) {
+  if (!item?.nutrition || !item.nutritionSource || item.nutritionSource === "default_empty") return true;
+  return ["kcal", "protein", "carbs", "fat"].every((key) => Number(item.nutrition?.[key] || 0) === 0);
 }
 
 async function requestNotificationPermission() {
   if (!("Notification" in window)) {
-    toast("Este navegador nao suporta notificacoes.");
+    toast("Este navegador não suporta notificações.");
     return;
   }
   const result = await Notification.requestPermission();
   state.appSettings.notificationsEnabled = result === "granted";
   render();
-  toast(result === "granted" ? "Notificacoes ativadas." : "Notificacoes nao autorizadas.");
+  toast(result === "granted" ? "Notificações ativadas." : "Notificações não autorizadas.");
 }
 
 function sendTestNotification() {
   if (!("Notification" in window) || Notification.permission !== "granted") {
-    toast("Ative as notificacoes primeiro.");
+    toast("Ative as notificações primeiro.");
     return;
   }
   new Notification("Plano Alimentar", {
-    body: "Notificacao de teste ativada.",
+    body: "Notificação de teste ativada.",
     icon: "icons/icon-192.png",
   });
 }
@@ -2272,22 +2353,22 @@ function registerQuickMeal() {
   currentDayLog().completedMeals[`quick_${Date.now()}`] = {
     at: timestamp(),
     option: "Avulsa",
-    title: "Refeicao avulsa",
+    title: "Refeição avulsa",
     items: [item],
   };
   if (affectStock) {
-    registerStock([item], "consumo", note || "Refeicao avulsa");
+    registerStock([item], "consumo", note || "Refeição avulsa");
   } else {
     state.log.unshift({
       at: timestamp(),
       type: "consumo",
-      detail: note || "Refeicao avulsa sem baixa de estoque",
+      detail: note || "Refeição avulsa sem baixa de estoque",
       items: [item],
     });
     render();
   }
   closeQuickMealModal();
-  toast("Refeicao avulsa registrada.");
+  toast("Refeição avulsa registrada.");
 }
 
 document.querySelectorAll(".nav-tab").forEach((button) => {
@@ -2473,7 +2554,7 @@ document.getElementById("signOutGoogle").addEventListener("click", async () => {
 
 document.getElementById("stockEditorSelect").addEventListener("change", renderStockEditor);
 
-document.getElementById("saveStockItem").addEventListener("click", () => {
+document.getElementById("saveStockItem").addEventListener("click", async () => {
   const selectedId = document.getElementById("stockEditorSelect").value;
   const name = document.getElementById("stockEditorName").value.trim();
   const unit = document.getElementById("stockEditorUnit").value.trim();
@@ -2485,16 +2566,15 @@ document.getElementById("saveStockItem").addEventListener("click", () => {
     return;
   }
 
-  const id = selectedId === "__new" ? createStockItemId(name) : selectedId;
-  state.stockItems[id] = {
-    ...(state.stockItems[id] || {}),
-    id,
-    name,
-    unit,
-    price: { unitPrice, packageQty: Math.max(1, packageQty), basis },
-  };
+  const price = { unitPrice, packageQty: Math.max(1, packageQty), basis };
+  const result = await resolveStockEditorItem({ selectedId, name, unit, price });
+  const id = result.id;
+  state.stockItems[id] = result.item;
   if (state.shoppingPrices) delete state.shoppingPrices[id];
-  toast(selectedId === "__new" ? "Ingrediente adicionado." : "Ingrediente atualizado.");
+  if (result.reused) toast("Ingrediente existente atualizado.");
+  else if (result.created && result.sourceType === "local") toast("Ingrediente adicionado a partir do catalogo nutricional.");
+  else if (result.created && result.sourceType === "ai") toast("Ingrediente adicionado com estimativa da IA.");
+  else toast(selectedId === "__new" ? "Ingrediente adicionado." : "Ingrediente atualizado.");
   render();
 });
 
@@ -2579,7 +2659,15 @@ document.getElementById("cancelDietImport")?.addEventListener("click", closeDiet
 document.getElementById("dietImportFile")?.addEventListener("change", async (event) => {
   const [file] = event.target.files || [];
   if (!file) return;
-  document.getElementById("dietImportText").value = await file.text();
+  const status = document.getElementById("dietImportStatus");
+  const textArea = document.getElementById("dietImportText");
+  try {
+    status.textContent = `Extraindo texto de ${file.name}...`;
+    textArea.value = await extractDietFileText(file);
+    status.textContent = "Arquivo lido. Revise o texto extraido e importe com IA.";
+  } catch (error) {
+    status.textContent = error.message;
+  }
 });
 document.getElementById("dietImportForm")?.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -2608,7 +2696,7 @@ watchSession({
 
     if (remoteState) {
       if (localDirtySince && (!lastCloudSaveStartedAt || localDirtySince <= lastCloudSaveStartedAt)) {
-        setSyncStatus("Sincronizando alteraÃ§Ãµes locais...");
+        setSyncStatus("Sincronizando alterações locais...");
         return;
       }
       const localUiState = {
@@ -2648,4 +2736,7 @@ if ("serviceWorker" in navigator) {
 }
 
 render();
-preloadNutritionCatalog();
+preloadNutritionCatalog(
+  () => renderStockOptions(),
+  (error) => console.warn("Nutrition catalog preload failed", error),
+);

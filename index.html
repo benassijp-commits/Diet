@@ -552,10 +552,10 @@
           </div>
           <button class="secondary-button icon-button" id="closeDietImportModal" type="button" aria-label="Fechar">x</button>
         </header>
-        <p class="modal-note">Cole o texto bruto da dieta. PDF/Excel entram depois como extracao de texto antes desta mesma etapa.</p>
+        <p class="modal-note">Cole o texto bruto da dieta ou carregue PDF/Excel. O app extrai o conteudo e envia para a IA adaptar ao modelo.</p>
         <label>
-          Arquivo de texto
-          <input id="dietImportFile" type="file" accept=".txt,.md,.csv,.json" />
+          Arquivo da dieta
+          <input id="dietImportFile" type="file" accept=".txt,.md,.csv,.json,.pdf,.xlsx,.xls,.ods,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
         </label>
         <label>
           Texto bruto da dieta
