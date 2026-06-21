@@ -7,7 +7,11 @@
 
 # Local agent/cache folders
 .agents/
+.obsidian/
 backup-*/
+Diet_App_AI_Guide_Obsidian.md
+00_AI_CONTEXT_FOR_CODEX.md
+diff-ultimo-commit.txt
 
 # Dependencies and build output
 node_modules/
