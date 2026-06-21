@@ -193,29 +193,44 @@ async function findIngredientNameMatchWithAi(items, name, aiSettings) {
     settings: aiSettings,
     temperature: 0,
     messages: [
-      {
+            {
         role: "system",
-        content: "Voce compara nomes de ingredientes para evitar duplicatas em um catalogo alimentar. Responda somente JSON valido.",
+        content: "Você compara nomes de alimentos para evitar duplicatas em um catálogo nutricional. Seja generalista e prático: o objetivo é reutilizar um alimento existente quando ele representa o mesmo alimento base para fins de dieta, estoque e cálculo nutricional. Responda somente JSON válido.",
       },
       {
         role: "user",
         content: `Ingrediente novo: "${name}".
 
-Compare com os ingredientes existentes abaixo e diga se algum representa o mesmo alimento base.
-Considere sinonimos, nomes regionais, traducoes, marcas usadas como nome comum e formas como singular/plural.
-Exemplos de mesmo item: "tortilha" e "wrap"; "shoyu" e "molho de soja"; "peito de frango" e "chicken breast".
-Nao marque como igual quando forem alimentos relacionados mas diferentes, variacoes nutricionalmente importantes, preparo diferente ou modificadores conflitantes: cru/cozido/frito, integral/normal, light/zero/diet, com/sem acucar.
+        Compare com os ingredientes existentes abaixo e diga se algum deles representa essencialmente o mesmo alimento base.
 
-Ingredientes existentes:
-${JSON.stringify(candidates)}
+        Critério principal:
+        - Prefira reutilizar um ingrediente existente quando a diferença for apenas nome comercial, marca, idioma, plural/singular, tamanho, descrição de coach, forma genérica de preparo, ou detalhe que não muda de forma relevante os macros usados no app.
+        - Considere equivalências entre português, inglês e nomes comuns de mercado.
+        - Considere marcas como descrição secundária quando o alimento base estiver claro.
+        - Considere nomes compostos ou alternativos como possíveis equivalentes quando o alimento principal for o mesmo.
+        - Seja especialmente cuidadoso para não criar duplicatas por causa de descrições longas.
 
-Responda exatamente neste formato:
-{
-  "sameIngredient": false,
-  "itemId": "",
-  "confidence": 0,
-  "reason": ""
-}`,
+        Quando NÃO considerar igual:
+        - Se a diferença muda claramente os macros de forma importante e o catálogo já possui essa distinção relevante.
+        - Exemplos de diferenças potencialmente relevantes: cru vs cozido, frito vs cozido/grelhado, integral vs branco, light/zero/diet vs normal, com açúcar vs sem açúcar, tipo de leite, tipo de carne, versão proteica, produto seco vs preparado.
+        - Porém, se o novo nome vier como alternativa ambígua ou composta, por exemplo "branco/integral", "cozido ou preparado", "legumes variados", "arroz variado", escolha o melhor item genérico existente em vez de criar duplicata desnecessária.
+
+        Importante:
+        - Não se limite aos exemplos acima. Use julgamento semântico geral.
+        - Não retorne match com baixa confiança.
+        - Se houver dúvida real entre dois alimentos nutricionalmente diferentes, retorne sameIngredient false.
+        - Se houver um item genérico existente adequado, prefira ele a criar um novo item muito específico.
+
+        Ingredientes existentes:
+        ${JSON.stringify(candidates)}
+
+        Responda exatamente neste formato:
+        {
+          "sameIngredient": false,
+          "itemId": "",
+          "confidence": 0,
+          "reason": ""
+        }`,
       },
     ],
   });
@@ -274,22 +289,44 @@ export async function resolveIngredientNutrition({ name, unit, aiSettings }) {
   }
 
   const promptContent = `Estime a informação nutricional para o ingrediente "${name}" com a unidade "${unit}".
-Se a unidade for "g" ou "ml", forneça os valores de referência para 100g ou 100ml respectivamente.
-Se a unidade for "unidade", "fatia", ou outra unidade de medida que não seja de massa/volume direto, forneça os valores para 1 unidade (por exemplo, 1 ovo, 1 fatia de pão).
 
-Responda SOMENTE com um objeto JSON válido, sem explicações, seguindo exatamente este formato:
-{
-  "referenceAmount": {
-    "quantity": 100,
-    "unit": "${unit}"
-  },
-  "nutrition": {
-    "kcal": 0,
-    "protein": 0,
-    "carbs": 0,
-    "fat": 0
-  }
-}`;
+    Objetivo:
+    Retornar valores nutricionais realistas para uso em um app de dieta. Não retorne valores zerados para alimentos reais.
+
+    Regras:
+    - Se a unidade for "g", retorne valores por 100 g.
+    - Se a unidade for "ml", retorne valores por 100 ml.
+    - Se a unidade for "unidade", "fatia", "porção" ou similar, retorne valores para 1 unidade média realista.
+    - Se o nome for genérico, use uma estimativa média comum.
+    - Se o nome tiver marca, use o alimento base quando não souber a marca exata.
+    - Se o alimento for uma mistura genérica, use média plausível.
+    - Nunca responda com kcal/protein/carbs/fat todos zerados para alimentos reais.
+    - Só é aceitável kcal 0 quando o item for claramente água, bebida sem calorias, sal, adoçante sem calorias, tempero sem calorias relevantes ou similar.
+    - Se não souber o valor exato, estime com base em tabelas nutricionais comuns. Não deixe em zero.
+
+    Formato obrigatório:
+    Responda SOMENTE com um objeto JSON válido, sem markdown e sem explicações.
+
+    Use este formato:
+    {
+      "referenceAmount": {
+        "quantity": 100,
+        "unit": "${unit}"
+      },
+      "nutrition": {
+        "kcal": "number",
+        "protein": "number",
+        "carbs": "number",
+        "fat": "number"
+      }
+    }
+
+    Atenção:
+    - Os campos de nutrition devem ser números, não strings.
+    - Não copie os placeholders.
+    - Não use null.
+    - Não omita nenhum campo.
+    - Não retorne todos os macros como 0 para alimento real.`;
 
   const aiResponse = await chatJson({
     settings: aiSettings,
