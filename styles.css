@@ -3205,6 +3205,31 @@ body.light-mode .weekly-plan-card .cart-header[role="button"]:focus-visible {
 }
 
 @media (max-width: 700px) {
+  .modal-open {
+    align-items: start;
+    overflow-y: auto;
+    padding: calc(10px + env(safe-area-inset-top)) 10px calc(92px + env(safe-area-inset-bottom));
+    place-items: start center;
+  }
+
+  .modal-open > .meal-modal-content {
+    width: min(100%, calc(100vw - 20px));
+    max-height: calc(100dvh - 112px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+
+  .meal-modal-content > header,
+  .meal-modal-content > footer,
+  .option-editor-block header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .meal-modal-content > header .icon-button {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+  }
+
   .nav-tabs {
     right: 0 !important;
     bottom: 0 !important;

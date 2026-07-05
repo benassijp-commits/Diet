@@ -17,7 +17,7 @@ export default function LogTab({ state, dispatch }) {
       <div className="table-wrap">
         <table>
           <thead><tr><th>Data</th><th>Tipo</th><th>Detalhe</th><th>Itens</th></tr></thead>
-          <tbody>{rows.map((entry, index) => <tr key={index}><td>{entry.date}</td><td>{entry.type}</td><td>{entry.detail}</td><td>{(entry.items || []).map((item) => `${item.name || labelForStockItem(state, item.stockItemId)}: ${formatQty(item.qty)} ${item.unit || ""}`).join("; ")}</td></tr>)}</tbody>
+          <tbody>{rows.map((entry, index) => <tr key={index}><td>{entry.date}</td><td>{entry.type}</td><td>{entry.alert ? `${entry.detail} | ${entry.alert}` : entry.detail}</td><td>{(entry.items || []).map((item) => `${item.name || labelForStockItem(state, item.stockItemId)}: ${formatQty(item.qty)} ${item.unit || ""}`).join("; ")}</td></tr>)}</tbody>
         </table>
       </div>
     </section>

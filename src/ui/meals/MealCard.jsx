@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronUp } from "lucide-react";
 import {
   getOptionKeys,
   labelForStockItem,
@@ -10,14 +11,30 @@ export default function MealCard({ meal, state, completed, onEdit, dispatch, not
   const optionKeys = getOptionKeys(meal);
   const selected = optionKeys.includes(state.selections[meal.id]) ? state.selections[meal.id] : optionKeys[0];
   const totals = optionNutritionTotals(state, meal, selected);
+  const collapsed = Boolean(state.collapsedMeals?.[meal.id]);
+  const CollapseIcon = collapsed ? ChevronDown : ChevronUp;
   return (
-    <article className="meal-card">
-      <header>
+    <article className={`meal-card${collapsed ? " collapsed" : ""}`}>
+      <header
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
+        onClick={(event) => {
+          if (event.target.closest("button, input, select, textarea, a, label")) return;
+          dispatch({ type: "meal/toggle-collapse", mealId: meal.id });
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          dispatch({ type: "meal/toggle-collapse", mealId: meal.id });
+        }}
+      >
         <div>
           <h3>{meal.title}</h3>
           <p>{meal.subtitle} | {nutritionSummary(totals)}</p>
         </div>
         {completed && <span className="completed-pill">Concluida {formatTime(completed.completedAt)}</span>}
+        <span className="meal-collapse-indicator"><CollapseIcon size={18} /></span>
       </header>
       <div className="option-control">
         {optionKeys.map((option) => (

@@ -131,7 +131,16 @@ export function reducer(state, action) {
       next.theme = next.theme === "light" ? "dark" : "light";
       return next;
     case "water/add":
-      currentDayLog(next).water = Math.min(9.9, Number(currentDayLog(next).water || 0) + action.delta);
+      currentDayLog(next).water = Math.max(0, Math.min(9.9, Number(currentDayLog(next).water || 0) + action.delta));
+      return next;
+    case "day/reset":
+      next.dailyLogs[todayKey()] = { water: 0, completedMeals: {} };
+      return next;
+    case "diet-timing/update":
+      next.dietTiming = { minHoursBetweenMeals: Number(action.minHoursBetweenMeals || 3) };
+      return next;
+    case "meal/toggle-collapse":
+      next.collapsedMeals[action.mealId] = !next.collapsedMeals[action.mealId];
       return next;
     case "meal/select":
       next.selections[action.mealId] = action.option;
@@ -149,6 +158,9 @@ export function reducer(state, action) {
       return next;
     case "meal/complete":
       completeMeal(next, action.mealId);
+      return next;
+    case "meal/quick-register":
+      registerQuickMeal(next, action);
       return next;
     case "meal/undo":
       undoMeal(next, action.mealId);
@@ -426,6 +438,11 @@ function ensureMealCart(next, meal) {
   next.shoppingCart[meal.id] = Object.fromEntries(optionKeys.map((option) => [option, Number(next.shoppingCart[meal.id]?.[option] || 0)]));
 }
 
+export function nextOptionKey(meal) {
+  const used = new Set(getOptionKeys(meal));
+  return OPTION_LETTERS.find((letter) => !used.has(letter)) || `Op${Date.now()}`;
+}
+
 function completeMeal(next, mealId) {
   const meal = getMeals(next).find((current) => current.id === mealId);
   if (!meal) return;
@@ -443,6 +460,8 @@ function completeMeal(next, mealId) {
     }
   }
 
+  const alert = timingAlert(next, mealId, completedAt);
+
   currentDayLog(next).completedMeals[mealId] = { option: selected, completedAt, items: ingredients, stockChanged: Boolean(next.stockManagementEnabled) };
   next.log.push({
     date: timestamp(),
@@ -450,7 +469,82 @@ function completeMeal(next, mealId) {
     type: next.stockManagementEnabled ? "saida" : "consumo",
     detail: `${meal.title} - Opcao ${selected}`,
     items: ingredients,
+    alert,
   });
+}
+
+function timingAlert(state, mealId, completedAt) {
+  if (mealId === "meal1") return firstMealDeviationAlert(state, completedAt);
+  const previousMeal = previousCompletedMeal(state, mealId);
+  if (!previousMeal) return null;
+
+  const gapHours = (new Date(completedAt) - new Date(previousMeal.completedAt)) / 36e5;
+  const minHoursBetweenMeals = Number(state.dietTiming.minHoursBetweenMeals || 3);
+  const maxHoursBetweenMeals = minHoursBetweenMeals + 1;
+  if (gapHours < minHoursBetweenMeals) return `Intervalo curto: ${formatQty(gapHours)}h desde a refeicao anterior.`;
+  if (gapHours > maxHoursBetweenMeals) return `Intervalo longo: ${formatQty(gapHours)}h desde a refeicao anterior.`;
+  return null;
+}
+
+function previousCompletedMeal(state, mealId) {
+  const meals = getMeals(state);
+  const index = meals.findIndex((meal) => meal.id === mealId);
+  const completed = currentDayLog(state).completedMeals;
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const record = completed[meals[i].id];
+    if (record?.completedAt) return record;
+  }
+  return null;
+}
+
+function firstMealDeviationAlert(state, completedAt) {
+  const historicalTimes = Object.entries(state.dailyLogs)
+    .filter(([day, log]) => day !== todayKey() && log.completedMeals?.meal1?.completedAt)
+    .map(([, log]) => minutesOfDay(log.completedMeals.meal1.completedAt))
+    .slice(-14);
+  if (historicalTimes.length < 3) return null;
+
+  const average = historicalTimes.reduce((sum, value) => sum + value, 0) / historicalTimes.length;
+  const current = minutesOfDay(completedAt);
+  const delta = current - average;
+  if (Math.abs(delta) < 60) return null;
+  return `Primeira refeicao ${Math.abs(Math.round(delta))} min ${delta > 0 ? "mais tarde" : "mais cedo"} que sua media recente.`;
+}
+
+function minutesOfDay(value) {
+  const date = new Date(value);
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+function registerQuickMeal(next, action) {
+  const qty = Number(action.qty || 0);
+  if (!action.stockItemId || !qty) return;
+  const item = {
+    stockItemId: action.stockItemId,
+    name: labelForStockItem(next, action.stockItemId),
+    qty,
+    unit: unitForStockItem(next, action.stockItemId),
+  };
+  const completedAt = new Date().toISOString();
+  currentDayLog(next).completedMeals[`quick_${Date.now()}`] = {
+    completedAt,
+    option: "Avulsa",
+    title: "Refeicao avulsa",
+    items: [item],
+    stockChanged: Boolean(action.affectStock),
+  };
+  if (action.affectStock) {
+    registerStock(next, [item], "consumo", action.note || "Refeicao avulsa");
+  } else {
+    next.log.push({
+      date: timestamp(),
+      isoDate: completedAt,
+      type: "consumo",
+      detail: action.note || "Refeicao avulsa sem baixa de estoque",
+      items: [item],
+      stockChanged: false,
+    });
+  }
 }
 
 function undoMeal(next, mealId) {
