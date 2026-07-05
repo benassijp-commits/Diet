@@ -1,21 +1,21 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import { initializeApp } from "firebase/app";
 import {
   GoogleAuthProvider,
   getAuth,
   getRedirectResult,
   onAuthStateChanged,
-  signInWithRedirect,
   signInWithPopup,
+  signInWithRedirect,
   signOut as firebaseSignOut,
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+} from "firebase/auth";
 import {
   doc,
   getFirestore,
   onSnapshot,
   serverTimestamp,
   setDoc,
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-import { firebaseConfig } from "./firebase-config.js";
+} from "firebase/firestore";
+import { firebaseConfig } from "../../firebase-config.js";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -39,10 +39,8 @@ export function watchSession({ onUser, onState, onError }) {
 
     unsubscribeState = onSnapshot(
       userStateDoc(user.uid),
-      (snapshot) => {
-        onState(snapshot.exists() ? snapshot.data().state : null);
-      },
-      (error) => onError(error),
+      (snapshot) => onState(snapshot.exists() ? snapshot.data().state : null),
+      onError,
     );
   });
 }

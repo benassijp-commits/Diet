@@ -37,16 +37,10 @@ function Has-StagedChanges {
   return $LASTEXITCODE -ne 0
 }
 
-function Check-JavascriptSyntax {
-  $files = @("app.js", "cloud-store.js", "data-model.js") +
-    (Get-ChildItem "src" -Filter "*.js" -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-
-  foreach ($file in $files) {
-    if (Test-Path $file) {
-      node --check $file
-      if ($LASTEXITCODE -ne 0) { throw "Syntax check failed: $file" }
-    }
-  }
+function Build-App {
+  $env:Path = "C:\Program Files\nodejs;" + $env:Path
+  & "C:\Program Files\nodejs\npm.cmd" run build
+  if ($LASTEXITCODE -ne 0) { throw "Build failed." }
 }
 
 function Deploy-Hosting {
@@ -66,7 +60,7 @@ Write-Host "Using git: $script:Git"
 Write-Host "Starting branch: $startBranch"
 
 Run-Git fetch origin
-Check-JavascriptSyntax
+Build-App
 
 Run-Git add -A
 if (Has-StagedChanges) {

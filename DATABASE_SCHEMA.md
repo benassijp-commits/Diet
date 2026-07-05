@@ -32,7 +32,11 @@ Formato:
   stockManagementEnabled: boolean,
   dietTiming: {
     minHoursBetweenMeals: number
-  }
+  },
+  workoutPlans: WorkoutPlan[],
+  activeWorkoutPlanId: string,
+  workoutSession?: WorkoutSession | null,
+  workoutLogs: WorkoutSession[]
 }
 ```
 
@@ -112,6 +116,88 @@ O nome do ingrediente na refeicao pode ser diferente do ingrediente real de esto
     unit: string
   }>,
   alert?: string
+}
+```
+
+## WorkoutPlan
+
+Treinos sao versionados como dietas. O plano ativo fica em `activeWorkoutPlanId`; planos antigos podem ser reativados.
+
+```js
+{
+  id: "workout_123",
+  name: "Treino hipertrofia",
+  status: "active" | "archived",
+  activatedAt: "2026-06-21",
+  archivedAt: "",
+  source: "manual" | "ai_import" | "baseline",
+  notes: "Observacoes do coach",
+  days: WorkoutDay[]
+}
+```
+
+## WorkoutDay
+
+```js
+{
+  id: "wday_123_A",
+  label: "A",
+  title: "Peito e triceps",
+  notes: "",
+  exercises: WorkoutExercise[]
+}
+```
+
+## WorkoutExercise
+
+```js
+{
+  id: "wex_123",
+  name: "Supino reto",
+  group: "Peito",
+  notes: "",
+  sets: [
+    {
+      reps: "8-12",
+      load: "80 kg",
+      restSeconds: 90,
+      notes: ""
+    }
+  ]
+}
+```
+
+## WorkoutSession
+
+Sessao de execucao separada do plano original. Permite editar/adicionar exercicios durante o treino sem perder a referencia do plano.
+
+```js
+{
+  id: "session_123",
+  planId: "workout_123",
+  planName: "Treino hipertrofia",
+  dayId: "wday_123_A",
+  dayLabel: "A",
+  dayTitle: "Peito e triceps",
+  startedAt: "2026-06-21T12:00:00.000Z",
+  finishedAt: "2026-06-21T13:00:00.000Z",
+  exercises: WorkoutExercise[],
+  currentExerciseIndex: 0,
+  currentSetIndex: 0,
+  phase: "ready" | "rest" | "done",
+  remainingSeconds: 90,
+  timerEndsAt: "2026-06-21T12:02:00.000Z",
+  setLogs: [
+    {
+      exerciseIndex: 0,
+      exerciseName: "Supino reto",
+      setIndex: 0,
+      reps: "8-12",
+      load: "80 kg",
+      restSeconds: 90,
+      completedAt: "2026-06-21T12:01:00.000Z"
+    }
+  ]
 }
 ```
 

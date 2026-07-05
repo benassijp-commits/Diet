@@ -1,7 +1,7 @@
 {
   "hosting": {
     "site": "dieta-e6bee",
-    "public": ".",
+    "public": "dist",
     "ignore": [
       "firebase.json",
       ".firebaserc",
