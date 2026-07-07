@@ -24,12 +24,12 @@ export async function chatJson({ settings, messages, temperature = 0.1 }) {
 
   const payload = await response.json();
   const content = payload?.choices?.[0]?.message?.content;
-  if (!content) throw new Error("A IA respondeu sem conteudo.");
+  if (!content) throw new Error("A IA respondeu sem conteúdo.");
 
   try {
     return JSON.parse(stripCodeFence(content));
   } catch {
-    throw new Error("A IA nao retornou JSON valido.");
+    throw new Error("A IA não retornou JSON válido.");
   }
 }
 

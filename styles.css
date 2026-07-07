@@ -38,6 +38,7 @@
   max-height: calc(100vh - var(--desktop-sticky-gap));
   overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .workout-plan-head,
@@ -155,6 +156,7 @@
   gap: 16px;
   padding: 20px;
   text-align: center;
+  touch-action: pan-y;
 }
 
 .workout-timer-card.running {
@@ -242,6 +244,129 @@ body.light-mode .workout-timer-card.running {
   background: linear-gradient(180deg, rgba(219, 234, 254, 0.95), #ffffff);
 }
 
+.ingredient-autocomplete {
+  position: relative;
+  min-width: 0;
+}
+
+.ingredient-results {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  max-height: 240px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+.ingredient-results button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.ingredient-results button:hover {
+  background: rgba(37, 99, 235, 0.16);
+}
+
+.ingredient-results span,
+.inline-unit-field span {
+  color: var(--muted);
+}
+
+.inline-unit-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.history-toggle {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  touch-action: manipulation;
+}
+
+.workout-history-sets {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.workout-history-sets div {
+  display: grid;
+  gap: 2px;
+}
+
+.ai-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-loading span {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: ai-spin 720ms linear infinite;
+}
+
+@keyframes ai-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.timer-display,
+.timer-meta,
+.timer-action {
+  user-select: none;
+}
+
+.workout-layout,
+.workout-side,
+.workout-timer-card,
+.workout-history-item,
+.workout-history-sets {
+  touch-action: pan-y;
+}
+
+.workout-timer-card button,
+.workout-timer-card input,
+.history-toggle {
+  touch-action: manipulation;
+}
+
+.main-content {
+  scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom));
+}
+
+.tab-panel.active {
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+}
+
 @media (max-width: 980px) {
   .workout-layout {
     grid-template-columns: 1fr;
@@ -250,6 +375,8 @@ body.light-mode .workout-timer-card.running {
   .workout-side {
     position: static;
     max-height: none;
+    overflow: visible;
+    overscroll-behavior: auto;
     order: -1;
   }
 
@@ -977,6 +1104,22 @@ tbody tr:last-child td {
   font-weight: 900;
 }
 
+.cart-option-control {
+  min-height: 38px;
+}
+
+.cart-option-control .secondary-button {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+}
+
+.cart-option-control strong {
+  min-width: 22px;
+  text-align: center;
+}
+
 .shopping-cart {
   display: grid;
   gap: 14px;
@@ -1533,7 +1676,6 @@ button:active,
 }
 
 .metric-panel {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: stretch;
   gap: 14px;
 }

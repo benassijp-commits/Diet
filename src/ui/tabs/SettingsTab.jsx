@@ -1,26 +1,46 @@
 import { useState } from "react";
-import { Database, Sparkles } from "lucide-react";
+import { Database, Globe2, Sparkles } from "lucide-react";
 import { clearAiSettings, loadAiSettings, saveAiSettings } from "../../ai-settings.js";
+import { SUPPORTED_LANGUAGES } from "../../i18n/index.js";
 
-export default function SettingsTab({ state, dispatch, notify }) {
-  const [settings, setSettings] = useState(loadAiSettings());
+export default function SettingsTab({ state, dispatch, notify, t, language }) {
+  const [settings, setSettings] = useState(() => {
+    const local = loadAiSettings();
+    const saved = state.appSettings?.aiSettings || {};
+    return { ...local, ...saved, apiKey: local.apiKey || saved.apiKey || "" };
+  });
+  const publicSettings = ({ apiKey, ...rest }) => rest;
+
   return (
     <section className="tab-panel active">
       <div className="settings-layout">
         <section className="stock-editor">
-          <h4><Sparkles size={16} /> Inteligencia artificial</h4>
+          <h4><Globe2 size={16} /> {t("settings.interface")}</h4>
           <div className="stock-editor-grid compact">
-            <label>Provedor<select value={settings.provider} onChange={(event) => setSettings({ ...settings, provider: event.target.value })}><option value="nanogpt">NanoGPT</option><option value="custom">OpenAI-compatible</option></select></label>
-            <label>Base URL<input value={settings.baseUrl} onChange={(event) => setSettings({ ...settings, baseUrl: event.target.value })} /></label>
-            <label>Modelo<input value={settings.model} onChange={(event) => setSettings({ ...settings, model: event.target.value })} /></label>
-            <label>Chave<input type="password" value={settings.apiKey || ""} onChange={(event) => setSettings({ ...settings, apiKey: event.target.value })} /></label>
-            <button type="button" onClick={() => { const saved = saveAiSettings(settings); dispatch({ type: "replace", state: { ...state, appSettings: { ...state.appSettings, aiSettings: saved } } }); notify("IA salva."); }}>Salvar IA</button>
-            <button className="secondary-button" type="button" onClick={() => { clearAiSettings(); setSettings(loadAiSettings()); notify("Chave removida."); }}>Limpar chave</button>
+            <label>
+              {t("settings.language")}
+              <select value={language} onChange={(event) => dispatch({ type: "settings/language", language: event.target.value })}>
+                {SUPPORTED_LANGUAGES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+            </label>
           </div>
         </section>
+
         <section className="stock-editor">
-          <h4><Database size={16} /> Dietas</h4>
-          <div className="alert-list">{state.dietVersions.map((version) => <div className="alert-item" key={version.id}><strong>{version.name}</strong><span>{version.status} - inicio {version.activatedAt}</span></div>)}</div>
+          <h4><Sparkles size={16} /> {t("settings.ai")}</h4>
+          <div className="stock-editor-grid compact">
+            <label>{t("settings.provider")}<select value={settings.provider} onChange={(event) => setSettings({ ...settings, provider: event.target.value })}><option value="nanogpt">NanoGPT</option><option value="custom">OpenAI-compatible</option></select></label>
+            <label>Base URL<input value={settings.baseUrl} onChange={(event) => setSettings({ ...settings, baseUrl: event.target.value })} /></label>
+            <label>{t("settings.model")}<input value={settings.model} onChange={(event) => setSettings({ ...settings, model: event.target.value })} /></label>
+            <label>{t("settings.key")}<input type="password" value={settings.apiKey || ""} onChange={(event) => setSettings({ ...settings, apiKey: event.target.value })} /></label>
+            <button type="button" onClick={() => { const saved = saveAiSettings(settings); dispatch({ type: "replace", state: { ...state, appSettings: { ...state.appSettings, aiSettings: publicSettings(saved) } } }); notify(t("settings.aiSaved")); }}>{t("settings.saveAi")}</button>
+            <button className="secondary-button" type="button" onClick={() => { clearAiSettings(); setSettings(loadAiSettings()); notify(t("settings.keyRemoved")); }}>{t("settings.clearKey")}</button>
+          </div>
+        </section>
+
+        <section className="stock-editor">
+          <h4><Database size={16} /> {t("settings.diets")}</h4>
+          <div className="alert-list">{state.dietVersions.map((version) => <div className="alert-item" key={version.id}><strong>{version.name}</strong><span>{version.status} - {t("settings.started")} {version.activatedAt}</span></div>)}</div>
         </section>
       </div>
     </section>

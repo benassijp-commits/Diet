@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { getCurrentUser, saveUserState, signIn, signOut, watchSession } from "../services/cloud-store.js";
-import { loadStoredState, migrateState, persistState, reducer } from "../state/app-state.js";
+import { getCloudState, loadStoredState, migrateState, persistState, reducer } from "../state/app-state.js";
 
 export function useAppStore() {
   const [state, baseDispatch] = useReducer(reducer, undefined, loadStoredState);
@@ -37,7 +37,7 @@ export function useAppStore() {
     const saveStartedAt = Date.now();
     lastRemoteSaveStartedAt.current = saveStartedAt;
     try {
-      await saveUserState(latestState.current);
+      await saveUserState(getCloudState(latestState.current));
       lastRemoteSaveCompletedAt.current = Date.now();
       if (lastLocalChangeAt.current <= saveStartedAt) hasPendingLocalChange.current = false;
       setSyncStatus(statusMessage);
@@ -91,7 +91,7 @@ export function useAppStore() {
         if (remoteState) {
           if (hasPendingLocalChange.current || hasRecentLocalChange()) {
             scheduleRemoteSave();
-            setSyncStatus("Alteracoes locais preservadas. Sincronizando Firestore...");
+            setSyncStatus("Alterações locais preservadas. Sincronizando Firestore...");
             return;
           }
           applyingRemote.current = true;

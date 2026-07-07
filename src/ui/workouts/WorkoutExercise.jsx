@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { formatLoadKg } from "../../state/app-state.js";
 
 export default function WorkoutExercise({ dayId, exercise, dispatch }) {
   const updateExercise = (patch) => dispatch({ type: "workout/exercise-update", dayId, exercise: { ...exercise, ...patch } });
@@ -11,7 +12,7 @@ export default function WorkoutExercise({ dayId, exercise, dispatch }) {
           <input placeholder="Grupo" value={exercise.group} onChange={(event) => updateExercise({ group: event.target.value })} />
         </div>
         <div className="toolbar-actions">
-          <button className="secondary-button" type="button" onClick={() => dispatch({ type: "workout/set-add", dayId, exerciseId: exercise.id })}>Serie</button>
+          <button className="secondary-button" type="button" onClick={() => dispatch({ type: "workout/set-add", dayId, exerciseId: exercise.id })}>Série</button>
           <button className="secondary-button" type="button" onClick={() => dispatch({ type: "workout/exercise-delete", dayId, exerciseId: exercise.id })}>Excluir</button>
         </div>
       </header>
@@ -22,7 +23,7 @@ export default function WorkoutExercise({ dayId, exercise, dispatch }) {
           <Fragment key={setIndex}>
             <strong>{setIndex + 1}</strong>
             <input value={set.reps} onChange={(event) => updateSet(setIndex, { reps: event.target.value })} />
-            <input value={set.load} onChange={(event) => updateSet(setIndex, { load: event.target.value })} />
+            <label className="inline-unit-field"><input value={set.load} onChange={(event) => updateSet(setIndex, { load: event.target.value })} /><span>{set.load ? formatLoadKg(set.load).replace(String(set.load).trim(), "").trim() || "kg" : "kg"}</span></label>
             <input type="number" min="0" step="5" value={set.restSeconds} onChange={(event) => updateSet(setIndex, { restSeconds: Number(event.target.value) })} />
             <span />
           </Fragment>

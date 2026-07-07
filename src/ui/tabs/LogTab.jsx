@@ -8,10 +8,10 @@ export default function LogTab({ state, dispatch }) {
   return (
     <section className="tab-panel active">
       <div className="toolbar">
-        <div><h3>Historico</h3><p>Rastro de refeicoes, estoque e treinos.</p></div>
+        <div><h3>Histórico</h3><p>Rastro de refeições, estoque e treinos.</p></div>
         <div className="toolbar-actions">
-          <select value={type} onChange={(event) => setType(event.target.value)}><option value="">Todos</option><option value="entrada">Entrada</option><option value="saida">Saida</option><option value="consumo">Consumo</option><option value="treino">Treino</option><option value="ajuste">Ajuste</option></select>
-          <button className="secondary-button" type="button" onClick={() => confirm("Limpar historico?") && dispatch({ type: "log/clear" })}>Limpar historico</button>
+          <select value={type} onChange={(event) => setType(event.target.value)}><option value="">Todos</option><option value="entrada">Entrada</option><option value="saida">Saída</option><option value="consumo">Consumo</option><option value="treino">Treino</option><option value="ajuste">Ajuste</option></select>
+          <button className="secondary-button" type="button" onClick={() => confirm("Limpar histórico?") && dispatch({ type: "log/clear" })}>Limpar histórico</button>
         </div>
       </div>
       <div className="table-wrap">

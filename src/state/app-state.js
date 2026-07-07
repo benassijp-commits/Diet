@@ -1,22 +1,31 @@
 import { BASE_STOCK_ITEMS, MEALS as BASE_MEALS } from "../../data-model.js";
+import nutritionCatalog from "../../data/nutrition/app-nutrition.pt.clean.json";
 import { DAILY_TARGETS, LEGACY_STORE_KEY, OPTION_LETTERS, STORE_KEY } from "../config.js";
 import { clone, formatQty, normalizeText, timestamp, todayKey } from "../utils.js";
 
 export const tabs = [
-  { id: "meals", label: "Refeicoes", title: "Refeicoes" },
-  { id: "workouts", label: "Exercicios", title: "Exercicios" },
+  { id: "meals", label: "Refeições", title: "Refeições" },
+  { id: "workouts", label: "Exercícios", title: "Exercícios" },
   { id: "shopping", label: "Compras", title: "Compras" },
   { id: "stock", label: "Estoque", title: "Estoque" },
-  { id: "log", label: "Historico", title: "Historico" },
-  { id: "settings", label: "Configuracoes", title: "Configuracoes" },
+  { id: "log", label: "Histórico", title: "Histórico" },
+  { id: "settings", label: "Configurações", title: "Configurações" },
 ];
+
+const LOCAL_UI_STATE_KEYS = [
+  "collapsedMeals",
+  "cartCollapsed",
+];
+
+const BASE_INGREDIENT_CATALOG_ITEMS = mergeIngredientCatalog(BASE_STOCK_ITEMS, nutritionCatalog?.items || []);
+const BASE_INGREDIENT_CATALOG_IDS = new Set(BASE_INGREDIENT_CATALOG_ITEMS.map((item) => item.id));
 
 export const initialState = {
   version: 3,
   meals: clone(BASE_MEALS),
   selections: Object.fromEntries(BASE_MEALS.map((meal) => [meal.id, "A"])),
   dailyLogs: {},
-  stockItems: Object.fromEntries(BASE_STOCK_ITEMS.map((item) => [item.id, item])),
+  stockItems: Object.fromEntries(BASE_INGREDIENT_CATALOG_ITEMS.map((item) => [item.id, item])),
   stock: {},
   log: [],
   shoppingCart: Object.fromEntries(BASE_MEALS.map((meal) => [meal.id, { A: 7, B: 0, C: 0 }])),
@@ -34,6 +43,7 @@ export const initialState = {
       stockAlerts: false,
       cartAlerts: false,
     },
+    language: "pt",
   },
   dietTiming: {
     minHoursBetweenMeals: 3,
@@ -56,6 +66,12 @@ export function loadStoredState() {
 
 export function persistState(state) {
   localStorage.setItem(STORE_KEY, JSON.stringify(state));
+}
+
+export function getCloudState(state) {
+  const cloudState = clone(state);
+  for (const key of LOCAL_UI_STATE_KEYS) delete cloudState[key];
+  return cloudState;
 }
 
 export function migrateState(rawState) {
@@ -85,6 +101,7 @@ export function migrateState(rawState) {
     appSettings: {
       ...clone(initialState.appSettings),
       ...(rawState.appSettings || {}),
+      language: rawState.appSettings?.language === "en" ? "en" : "pt",
     },
     dailyLogs: rawState.dailyLogs || {},
     dietTiming: {
@@ -157,16 +174,19 @@ export function reducer(state, action) {
       ensureMealCart(next, action.meal);
       return next;
     case "meal/complete":
-      completeMeal(next, action.mealId);
+      completeMeal(next, action);
       return next;
     case "meal/quick-register":
-      registerQuickMeal(next, action);
+      registerQuickMealV2(next, action);
       return next;
     case "meal/undo":
       undoMeal(next, action.mealId);
       return next;
     case "cart/add":
       addSelectedMealToCart(next, action.mealId);
+      return next;
+    case "cart/set-option-count":
+      setCartOptionCount(next, action.mealId, action.option, action.count);
       return next;
     case "cart/clear":
       next.shoppingCart = Object.fromEntries(getMeals(next).map((meal) => [meal.id, Object.fromEntries(getOptionKeys(meal).map((option) => [option, 0]))]));
@@ -175,10 +195,13 @@ export function reducer(state, action) {
       next.stockManagementEnabled = action.value;
       return next;
     case "stock/register":
-      registerStock(next, action.items, action.kind, action.detail);
+      registerStockV2(next, action.items, action.kind, action.detail);
       return next;
     case "stock/upsert-item":
       next.stockItems[action.item.id] = action.item;
+      return next;
+    case "settings/language":
+      next.appSettings.language = action.language === "en" ? "en" : "pt";
       return next;
     case "log/clear":
       next.log = [];
@@ -273,7 +296,8 @@ export function getActiveWorkoutPlan(state) {
 export function getShoppingRows(state) {
   return aggregate(state, getMealItemsForPlan(state)).map((row) => {
     const inStock = getStockQty(state, row.stockItemId);
-    return { ...row, inStock, toBuy: Math.max(0, row.qty - inStock) };
+    const toBuy = Math.max(0, row.qty - inStock);
+    return { ...row, inStock, toBuy, estimatedCost: estimateIngredientCost(state, row.stockItemId, toBuy) };
   });
 }
 
@@ -305,11 +329,46 @@ export function nutritionSummary(totals) {
 }
 
 export function stockItemSearchLabel(item) {
-  return `${item.name} (${item.unit})`;
+  return ingredientSearchLabel(item);
 }
 
 export function allStockItems(state) {
   return Object.values(state.stockItems).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function allIngredientCatalogItems(state) {
+  return dedupeIngredientCatalogItems(Object.values(state.stockItems))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function ingredientSearchLabel(item) {
+  return ingredientSearchLabelForLanguage(item, "pt");
+}
+
+export function ingredientSearchLabelForLanguage(item, language = "pt") {
+  if (!item) return "";
+  return `${ingredientNameForLanguage(item, language)} (${item.unit || "un"})`;
+}
+
+export function ingredientNameForLanguage(item, language = "pt") {
+  if (!item) return "";
+  const lang = language === "en" ? "en" : "pt";
+  return item.names?.[lang] || item.names?.pt || item.name || item.id || "";
+}
+
+export function ingredientSearchText(item, language = "pt") {
+  const lang = language === "en" ? "en" : "pt";
+  const names = [
+    item?.name,
+    item?.names?.[lang],
+    item?.names?.pt,
+    item?.names?.en,
+    ...(item?.aliasesByLanguage?.[lang] || []),
+    ...(item?.aliasesByLanguage?.pt || []),
+    ...(item?.aliasesByLanguage?.en || []),
+    ...(item?.aliases || []).map((alias) => typeof alias === "string" ? alias : alias?.value),
+  ].filter(Boolean);
+  return [...new Set(names)].join(" ");
 }
 
 export function getStockQty(state, stockItemId) {
@@ -317,11 +376,141 @@ export function getStockQty(state, stockItemId) {
 }
 
 export function labelForStockItem(state, stockItemId) {
-  return state.stockItems[stockItemId]?.name || stockItemId;
+  return labelForIngredient(state, stockItemId);
 }
 
 export function unitForStockItem(state, stockItemId) {
-  return state.stockItems[stockItemId]?.unit || "";
+  return unitForIngredient(state, stockItemId);
+}
+
+export function labelForIngredient(state, id) {
+  return state.stockItems[id]?.name || id;
+}
+
+export function unitForIngredient(state, id) {
+  return normalizeAllowedUnit(state.stockItems[id]?.unit || "g");
+}
+
+export function nutritionForIngredient(state, id) {
+  return state.stockItems[id]?.nutrition || { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+}
+
+export function priceForIngredient(state, id) {
+  const item = state.stockItems[id] || {};
+  const price = item.price ?? item.purchasePrice ?? state.shoppingPrices?.[id]?.price;
+  const referenceQty = item.priceReferenceQty ?? item.priceQty ?? state.shoppingPrices?.[id]?.qty;
+  const referenceUnit = item.priceReferenceUnit ?? item.priceUnit ?? item.unit;
+  return {
+    price: Number(price || 0),
+    referenceQty: Number(referenceQty || 0),
+    referenceUnit: normalizeAllowedUnit(referenceUnit || item.unit || "g"),
+  };
+}
+
+export function estimateIngredientCost(state, id, qty) {
+  const price = priceForIngredient(state, id);
+  if (!price.price || !price.referenceQty || !qty) return 0;
+  return (Number(qty || 0) / price.referenceQty) * price.price;
+}
+
+export function stockStatusForIngredient(state, id) {
+  const needed = getShoppingRows(state).find((row) => row.stockItemId === id)?.qty || 0;
+  const available = getStockQty(state, id);
+  if (needed > 0 && available <= 0) return { label: "Sem estoque", className: "status-low" };
+  if (needed > 0 && available < needed) return { label: "Comprar", className: "status-low" };
+  if (available <= 0) return { label: "Sem estoque", className: "status-low" };
+  return { label: "OK", className: "status-ok" };
+}
+
+export function normalizeAllowedUnit(unit) {
+  const normalized = String(unit || "g").trim().toLowerCase();
+  if (normalized === "litro" || normalized === "liter" || normalized === "l") return "l";
+  if (normalized === "unidade" || normalized === "unidades" || normalized === "unit") return "un";
+  return ["g", "kg", "un", "ml", "l"].includes(normalized) ? normalized : "g";
+}
+
+function mergeIngredientCatalog(baseItems, nutritionItems) {
+  const byId = new Map();
+  const normalizedNames = new Set();
+  const addItem = (item) => {
+    if (!item?.id || !item?.name || byId.has(item.id)) return;
+    const normalizedName = normalizeText(item.name);
+    if (normalizedName && normalizedNames.has(normalizedName)) return;
+    byId.set(item.id, item);
+    if (normalizedName) normalizedNames.add(normalizedName);
+  };
+
+  for (const item of baseItems) addItem(ensureCatalogLanguageFields(item));
+  for (const item of nutritionItems) addItem(nutritionCatalogItemToStockItem(item));
+  return [...byId.values()];
+}
+
+function ensureCatalogLanguageFields(item) {
+  const aliases = item.aliases || [];
+  return {
+    ...item,
+    unit: normalizeAllowedUnit(item.unit),
+    names: {
+      pt: item.names?.pt || item.name,
+      ...(item.names?.en ? { en: item.names.en } : {}),
+    },
+    aliasesByLanguage: {
+      pt: [
+        item.name,
+        ...(item.aliasesByLanguage?.pt || []),
+        ...aliases.map((alias) => typeof alias === "string" ? alias : alias?.value).filter(Boolean),
+      ],
+      ...(item.aliasesByLanguage?.en ? { en: item.aliasesByLanguage.en } : {}),
+    },
+  };
+}
+
+function nutritionCatalogItemToStockItem(item) {
+  const name = item?.names?.pt || item?.name || item?.id || "";
+  const referenceAmount = item?.referenceAmount || {};
+  const referenceQty = Math.max(1, Number(referenceAmount.quantity || 100));
+  return {
+    id: item.id,
+    name,
+    unit: normalizeAllowedUnit(referenceAmount.unit || "g"),
+    category: item?.category || "catálogo nutricional",
+    nutrition: {
+      kcal: Number(item?.nutrition?.kcal || 0) / referenceQty,
+      protein: Number(item?.nutrition?.protein || 0) / referenceQty,
+      carbs: Number(item?.nutrition?.carbs || 0) / referenceQty,
+      fat: Number(item?.nutrition?.fat || 0) / referenceQty,
+    },
+    aliases: item?.aliases || [],
+    names: {
+      pt: item?.names?.pt || name,
+      ...(item?.names?.en ? { en: item.names.en } : {}),
+    },
+    aliasesByLanguage: {
+      pt: [
+        item?.names?.pt || name,
+        ...(item?.aliases || []).map((alias) => typeof alias === "string" ? alias : alias?.value).filter(Boolean),
+      ],
+      ...(item?.names?.en ? { en: [item.names.en] } : {}),
+    },
+    nutritionSource: item?.source?.id || nutritionCatalog?.source || "nutrition_catalog",
+  };
+}
+
+function dedupeIngredientCatalogItems(items) {
+  const byName = new Map();
+  for (const item of items) {
+    if (!item?.id || !item?.name) continue;
+    const normalizedName = normalizeText(item.name) || item.id;
+    const existing = byName.get(normalizedName);
+    if (!existing) {
+      byName.set(normalizedName, item);
+      continue;
+    }
+    const existingIsBase = BASE_INGREDIENT_CATALOG_IDS.has(existing.id);
+    const currentIsBase = BASE_INGREDIENT_CATALOG_IDS.has(item.id);
+    if (existingIsBase && !currentIsBase) byName.set(normalizedName, item);
+  }
+  return [...byName.values()];
 }
 
 export function createStockItemId(name) {
@@ -426,7 +615,7 @@ function getMealItemsForPlan(state) {
 
 function addMeal(next) {
   const id = `meal_custom_${Date.now()}`;
-  next.meals.push({ id, title: `Refeicao ${next.meals.length + 1}`, subtitle: "Nova refeicao", macros: "", options: { A: [] } });
+  next.meals.push({ id, title: `Refeição ${next.meals.length + 1}`, subtitle: "Nova refeição", macros: "", options: { A: [] } });
   next.selections[id] = "A";
   next.shoppingCart[id] = { A: 0 };
   return next;
@@ -443,16 +632,20 @@ export function nextOptionKey(meal) {
   return OPTION_LETTERS.find((letter) => !used.has(letter)) || `Op${Date.now()}`;
 }
 
-function completeMeal(next, mealId) {
+function completeMeal(next, action) {
+  const mealId = action.mealId;
   const meal = getMeals(next).find((current) => current.id === mealId);
   if (!meal) return;
-  const selected = next.selections[mealId] || getOptionKeys(meal)[0];
-  const completedAt = new Date().toISOString();
-  const ingredients = (meal.options[selected] || []).map((ingredient) => ({
+  const selected = action.option || next.selections[mealId] || getOptionKeys(meal)[0];
+  const completedAt = action.completedAt || new Date().toISOString();
+  const sourceItems = Array.isArray(action.items) ? action.items : (meal.options[selected] || []);
+  const ingredients = sourceItems.map((ingredient) => ({
     ...ingredient,
-    name: labelForStockItem(next, ingredient.stockItemId),
-    unit: unitForStockItem(next, ingredient.stockItemId),
-  }));
+    qty: Math.max(0, Number(ingredient.qty || 0)),
+    name: String(ingredient.name || ingredient.label || labelForIngredient(next, ingredient.stockItemId)).trim(),
+    unit: normalizeAllowedUnit(ingredient.unit || unitForIngredient(next, ingredient.stockItemId)),
+  })).filter((ingredient) => ingredient.stockItemId && ingredient.qty > 0);
+  if (!ingredients.length) return;
 
   if (next.stockManagementEnabled) {
     for (const ingredient of ingredients) {
@@ -467,7 +660,7 @@ function completeMeal(next, mealId) {
     date: timestamp(),
     isoDate: completedAt,
     type: next.stockManagementEnabled ? "saida" : "consumo",
-    detail: `${meal.title} - Opcao ${selected}`,
+    detail: `${meal.title} - Opção ${selected}`,
     items: ingredients,
     alert,
   });
@@ -481,8 +674,8 @@ function timingAlert(state, mealId, completedAt) {
   const gapHours = (new Date(completedAt) - new Date(previousMeal.completedAt)) / 36e5;
   const minHoursBetweenMeals = Number(state.dietTiming.minHoursBetweenMeals || 3);
   const maxHoursBetweenMeals = minHoursBetweenMeals + 1;
-  if (gapHours < minHoursBetweenMeals) return `Intervalo curto: ${formatQty(gapHours)}h desde a refeicao anterior.`;
-  if (gapHours > maxHoursBetweenMeals) return `Intervalo longo: ${formatQty(gapHours)}h desde a refeicao anterior.`;
+  if (gapHours < minHoursBetweenMeals) return `Intervalo curto: ${formatQty(gapHours)}h desde a refeição anterior.`;
+  if (gapHours > maxHoursBetweenMeals) return `Intervalo longo: ${formatQty(gapHours)}h desde a refeição anterior.`;
   return null;
 }
 
@@ -508,12 +701,42 @@ function firstMealDeviationAlert(state, completedAt) {
   const current = minutesOfDay(completedAt);
   const delta = current - average;
   if (Math.abs(delta) < 60) return null;
-  return `Primeira refeicao ${Math.abs(Math.round(delta))} min ${delta > 0 ? "mais tarde" : "mais cedo"} que sua media recente.`;
+  return `Primeira refeição ${Math.abs(Math.round(delta))} min ${delta > 0 ? "mais tarde" : "mais cedo"} que sua média recente.`;
 }
 
 function minutesOfDay(value) {
   const date = new Date(value);
   return date.getHours() * 60 + date.getMinutes();
+}
+
+function registerQuickMealV2(next, action) {
+  const items = normalizeMovementItems(next, Array.isArray(action.items) ? action.items : [{
+    stockItemId: action.stockItemId,
+    name: action.name,
+    qty: action.qty,
+    unit: action.unit,
+  }]);
+  if (!items.length) return;
+  const completedAt = new Date().toISOString();
+  currentDayLog(next).completedMeals[`quick_${Date.now()}`] = {
+    completedAt,
+    option: "Avulsa",
+    title: "Refeição avulsa",
+    items,
+    stockChanged: Boolean(action.affectStock),
+  };
+  if (action.affectStock) {
+    registerStockV2(next, items, "consumo", action.note || "Refeição avulsa");
+    return;
+  }
+  next.log.push({
+    date: timestamp(),
+    isoDate: completedAt,
+    type: "consumo",
+    detail: action.note || "Refeição avulsa sem baixa de estoque",
+    items,
+    stockChanged: false,
+  });
 }
 
 function registerQuickMeal(next, action) {
@@ -529,18 +752,18 @@ function registerQuickMeal(next, action) {
   currentDayLog(next).completedMeals[`quick_${Date.now()}`] = {
     completedAt,
     option: "Avulsa",
-    title: "Refeicao avulsa",
+    title: "Refeição avulsa",
     items: [item],
     stockChanged: Boolean(action.affectStock),
   };
   if (action.affectStock) {
-    registerStock(next, [item], "consumo", action.note || "Refeicao avulsa");
+    registerStock(next, [item], "consumo", action.note || "Refeição avulsa");
   } else {
     next.log.push({
       date: timestamp(),
       isoDate: completedAt,
       type: "consumo",
-      detail: action.note || "Refeicao avulsa sem baixa de estoque",
+      detail: action.note || "Refeição avulsa sem baixa de estoque",
       items: [item],
       stockChanged: false,
     });
@@ -567,6 +790,13 @@ function addSelectedMealToCart(next, mealId) {
   next.shoppingCart[mealId][option] = Number(next.shoppingCart[mealId][option] || 0) + 1;
 }
 
+function setCartOptionCount(next, mealId, option, count) {
+  const meal = getMeals(next).find((current) => current.id === mealId);
+  if (!meal || !getOptionKeys(meal).includes(option)) return;
+  next.shoppingCart[mealId] = next.shoppingCart[mealId] || {};
+  next.shoppingCart[mealId][option] = Math.max(0, Number(count || 0));
+}
+
 function registerStock(next, items, kind, detail) {
   const factor = kind === "entrada" ? 1 : -1;
   for (const item of items) {
@@ -575,6 +805,26 @@ function registerStock(next, items, kind, detail) {
       : Math.max(0, getStockQty(next, item.stockItemId) - item.qty);
   }
   next.log.push({ date: timestamp(), isoDate: new Date().toISOString(), type: kind, detail, items });
+}
+
+function registerStockV2(next, items, kind, detail) {
+  const factor = kind === "entrada" ? 1 : -1;
+  const validItems = normalizeMovementItems(next, items);
+  for (const item of validItems) {
+    next.stock[item.stockItemId] = Math.max(0, getStockQty(next, item.stockItemId) + item.qty * factor);
+  }
+  if (validItems.length) {
+    next.log.push({ date: timestamp(), isoDate: new Date().toISOString(), type: kind, detail, items: validItems });
+  }
+}
+
+function normalizeMovementItems(state, items = []) {
+  return items.map((item) => ({
+    stockItemId: item.stockItemId,
+    name: String(item.name || item.label || labelForIngredient(state, item.stockItemId)).trim(),
+    qty: Math.max(0, Number(item.qty || 0)),
+    unit: normalizeAllowedUnit(item.unit || unitForIngredient(state, item.stockItemId)),
+  })).filter((item) => item.stockItemId && item.qty > 0);
 }
 
 function activateImportedDiet(next, imported) {
@@ -639,7 +889,7 @@ function createWorkoutDay(label) {
 }
 
 function createWorkoutExercise() {
-  return { id: `wex_${Date.now()}`, name: "Novo exercicio", group: "", notes: "", sets: [createWorkoutSet()] };
+  return { id: `wex_${Date.now()}`, name: "Novo exercício", group: "", notes: "", sets: [createWorkoutSet()] };
 }
 
 function createWorkoutSet() {
@@ -666,7 +916,7 @@ function normalizeWorkoutDay(day, index = 0) {
 }
 
 function normalizeWorkoutExercise(exercise) {
-  return { id: exercise?.id || `wex_${Date.now()}_${Math.random().toString(16).slice(2)}`, name: String(exercise?.name || "Exercicio").trim(), group: String(exercise?.group || "").trim(), notes: String(exercise?.notes || "").trim(), sets: (Array.isArray(exercise?.sets) && exercise.sets.length ? exercise.sets : [createWorkoutSet()]).map(normalizeWorkoutSet) };
+  return { id: exercise?.id || `wex_${Date.now()}_${Math.random().toString(16).slice(2)}`, name: String(exercise?.name || "Exercício").trim(), group: String(exercise?.group || "").trim(), notes: String(exercise?.notes || "").trim(), sets: (Array.isArray(exercise?.sets) && exercise.sets.length ? exercise.sets : [createWorkoutSet()]).map(normalizeWorkoutSet) };
 }
 
 function normalizeWorkoutSet(set) {
@@ -752,7 +1002,12 @@ function startWorkoutSession(next, dayId) {
     dayTitle: day.title,
     startedAt: new Date().toISOString(),
     finishedAt: "",
-    exercises: clone(day.exercises),
+    exercises: day.exercises.map((exercise) => {
+      const suggestedLoad = lastWorkoutLoadForExercise(next, exercise.name);
+      const clonedExercise = clone(exercise);
+      if (suggestedLoad) clonedExercise.sets = clonedExercise.sets.map((set) => ({ ...set, load: set.load || suggestedLoad }));
+      return clonedExercise;
+    }),
     currentExerciseIndex: 0,
     currentSetIndex: 0,
     phase: "ready",
@@ -760,6 +1015,26 @@ function startWorkoutSession(next, dayId) {
     timerEndsAt: "",
     setLogs: [],
   };
+}
+
+export function lastWorkoutLoadForExercise(state, exerciseName) {
+  const name = normalizeText(exerciseName);
+  if (!name) return "";
+  const logs = state.workoutLogs || [];
+  for (let sessionIndex = logs.length - 1; sessionIndex >= 0; sessionIndex -= 1) {
+    const rows = logs[sessionIndex].setLogs || [];
+    for (let rowIndex = rows.length - 1; rowIndex >= 0; rowIndex -= 1) {
+      const row = rows[rowIndex];
+      if (normalizeText(row.exerciseName) === name && row.load) return row.load;
+    }
+  }
+  return "";
+}
+
+export function formatLoadKg(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "-";
+  return /kg\b/i.test(raw) ? raw : `${raw} kg`;
 }
 
 function updateSessionSet(next, exerciseIndex, setIndex, set) {
@@ -807,7 +1082,8 @@ function finishWorkoutSession(next) {
   const session = next.workoutSession;
   if (!session) return;
   session.finishedAt = new Date().toISOString();
+  session.durationSeconds = Math.max(0, Math.round((new Date(session.finishedAt) - new Date(session.startedAt)) / 1000));
   next.workoutLogs.push(clone(session));
-  next.log.push({ date: timestamp(), isoDate: session.finishedAt, type: "treino", detail: `${session.dayLabel} - ${session.dayTitle}`, items: session.setLogs.map((row) => ({ name: `${row.exerciseName} serie ${row.setIndex + 1}: ${row.load || "-"} x ${row.reps}`, qty: 1, unit: "serie" })) });
+  next.log.push({ date: timestamp(), isoDate: session.finishedAt, type: "treino", detail: `${session.dayLabel} - ${session.dayTitle}`, items: session.setLogs.map((row) => ({ name: `${row.exerciseName} série ${row.setIndex + 1}: ${formatLoadKg(row.load)} x ${row.reps}`, qty: 1, unit: "série" })) });
   next.workoutSession = null;
 }

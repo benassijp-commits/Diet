@@ -1,25 +1,27 @@
 import { useEffect, useState } from "react";
-import { formatTimerSeconds } from "../../state/app-state.js";
+import { formatLoadKg, formatTimerSeconds } from "../../state/app-state.js";
 
-export default function WorkoutSession({ state, dispatch, notify }) {
+export default function WorkoutSession({ state, dispatch, notify, t = (key) => key }) {
   const session = state.workoutSession;
   const [load, setLoad] = useState("");
+  const [, setTick] = useState(0);
 
   useEffect(() => {
     if (!session || session.phase !== "rest") return;
     const timer = window.setInterval(() => {
       if (!state.workoutSession?.timerEndsAt) return;
       const remaining = Math.max(0, Math.ceil((new Date(state.workoutSession.timerEndsAt).getTime() - Date.now()) / 1000));
+      setTick((value) => value + 1);
       if (remaining <= 0) {
         playAlarm();
         dispatch({ type: "workout/session-finish-rest" });
-        notify("Pausa concluida.");
+        notify(t("workouts.timerDone"));
       }
     }, 250);
     return () => window.clearInterval(timer);
-  }, [session?.phase, session?.timerEndsAt]);
+  }, [session?.phase, session?.timerEndsAt, t]);
 
-  if (!session) return <p className="empty-state">Nenhum treino em execucao. Use Fazer em um dia de treino.</p>;
+  if (!session) return <p className="empty-state">{t("workouts.emptySession")}</p>;
 
   const exercise = session.exercises[session.currentExerciseIndex];
   const set = exercise?.sets[session.currentSetIndex];
@@ -31,16 +33,16 @@ export default function WorkoutSession({ state, dispatch, notify }) {
     <div className={`workout-timer-card ${session.phase === "rest" ? "running" : ""}`}>
       <div>
         <p className="eyebrow">{session.dayLabel} - {session.dayTitle}</p>
-        <h3>{exercise?.name || "Treino concluido"}</h3>
-        <span>{doneSets}/{totalSets} series</span>
+        <h3>{exercise?.name || t("workouts.saveWorkout")}</h3>
+        <span>{doneSets}/{totalSets} {t("workouts.sets")}</span>
       </div>
       <div className="timer-display">{formatTimerSeconds(seconds)}</div>
       <div className="timer-meta">
-        <strong>Serie atual {exercise ? session.currentSetIndex + 1 : "-"}/{exercise?.sets.length || "-"}</strong>
-        <span>Reps {set?.reps || "-"} - pausa {formatTimerSeconds(set?.restSeconds || 0)}</span>
+        <strong>{t("workouts.currentSet")} {exercise ? session.currentSetIndex + 1 : "-"}/{exercise?.sets.length || "-"}</strong>
+        <span>{t("workouts.reps")} {set?.reps || "-"} - {formatLoadKg(load || set?.load)} - {t("workouts.rest")} {formatTimerSeconds(set?.restSeconds || 0)}</span>
       </div>
       <label className="timer-load-field">
-        Carga feita nesta serie
+        {t("workouts.loadField")}
         <input value={load || set?.load || ""} disabled={session.phase !== "ready"} onChange={(event) => setLoad(event.target.value)} placeholder="Ex: 80 kg" />
       </label>
       <button
@@ -55,12 +57,12 @@ export default function WorkoutSession({ state, dispatch, notify }) {
           }
         }}
       >
-        {session.phase === "rest" ? "Pausa rodando" : session.phase === "done" ? "Salvar treino" : doneSets + 1 >= totalSets ? "Registrar ultima serie" : "Iniciar pausa"}
+        {session.phase === "rest" ? t("workouts.pauseRunning") : session.phase === "done" ? t("workouts.saveWorkout") : doneSets + 1 >= totalSets ? t("workouts.registerLast") : t("workouts.startRest")}
       </button>
       <div className="toolbar-actions workout-session-actions">
-        <button className="secondary-button" type="button" onClick={() => dispatch({ type: "workout/session-add-exercise" })}>Adicionar avulso</button>
-        <button className="secondary-button" type="button" onClick={() => dispatch({ type: "workout/session-finish" })}>Concluir agora</button>
-        <button className="secondary-button" type="button" onClick={() => dispatch({ type: "workout/session-cancel" })}>Cancelar</button>
+        <button className="secondary-button" type="button" onClick={() => dispatch({ type: "workout/session-add-exercise" })}>{t("workouts.addExtra")}</button>
+        <button className="secondary-button" type="button" onClick={() => dispatch({ type: "workout/session-finish" })}>{t("workouts.finishNow")}</button>
+        <button className="secondary-button" type="button" onClick={() => dispatch({ type: "workout/session-cancel" })}>{t("workouts.cancel")}</button>
       </div>
     </div>
   );

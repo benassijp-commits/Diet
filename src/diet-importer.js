@@ -58,7 +58,7 @@ export async function importDietFromText({ text, settings }) {
 
 function normalizeImportedDiet(value) {
   const meals = Array.isArray(value?.meals) ? value.meals : [];
-  if (!meals.length) throw new Error("A IA nao encontrou refeicoes no texto.");
+  if (!meals.length) throw new Error("A IA não encontrou refeições no texto.");
 
   return {
     dietName: String(value.dietName || "Dieta importada").trim() || "Dieta importada",
@@ -79,11 +79,11 @@ function normalizeMeal(meal, index) {
   }
 
   if (!Object.values(options).some((items) => items.length)) {
-    throw new Error(`A refeicao ${index + 1} nao tem ingredientes validos.`);
+    throw new Error(`A refeição ${index + 1} não tem ingredientes válidos.`);
   }
 
   return {
-    title: String(meal?.title || `Refeicao ${index + 1}`).trim(),
+    title: String(meal?.title || `Refeição ${index + 1}`).trim(),
     subtitle: String(meal?.subtitle || "").trim(),
     macros: String(meal?.macros || "").trim(),
     options,

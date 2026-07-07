@@ -40,7 +40,7 @@ async function extractPdfText(file) {
 
   const result = pages.join("\n\n").trim();
   if (!result) {
-    throw new Error("Nao foi possivel extrair texto deste PDF. Se ele for escaneado como imagem, envie uma versao com texto selecionavel.");
+    throw new Error("Não foi possível extrair texto deste PDF. Se ele for escaneado como imagem, envie uma versão com texto selecionável.");
   }
   return result;
 }
@@ -55,7 +55,7 @@ async function extractSpreadsheetText(file) {
   }).filter(Boolean);
 
   const result = sheets.join("\n\n").trim();
-  if (!result) throw new Error("Nao foi possivel extrair texto desta planilha.");
+  if (!result) throw new Error("Não foi possível extrair texto desta planilha.");
   return result;
 }
 
@@ -83,8 +83,8 @@ function loadScript(src, globalName) {
     script.async = true;
     script.onload = () => window[globalName]
       ? resolve(window[globalName])
-      : reject(new Error(`Biblioteca ${globalName} nao carregou corretamente.`));
-    script.onerror = () => reject(new Error(`Nao foi possivel carregar ${globalName}. Verifique a conexao e tente novamente.`));
+      : reject(new Error(`Biblioteca ${globalName} não carregou corretamente.`));
+    script.onerror = () => reject(new Error(`Não foi possível carregar ${globalName}. Verifique a conexão e tente novamente.`));
     document.head.appendChild(script);
   });
 }

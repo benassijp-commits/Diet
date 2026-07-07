@@ -11,57 +11,57 @@ const tabIcons = {
   settings: Settings,
 };
 
-export default function Sidebar({ state, auth, activeTab, onTabChange, dispatch, notify }) {
+export default function Sidebar({ state, auth, activeTab, onTabChange, dispatch, notify, t }) {
   const water = formatQty(currentDayLog(state).water);
   return (
     <aside className="sidebar">
       <div className="brand">
         <div className="brand-mark"><Activity /></div>
         <div className="brand-text">
-          <h1>Plano Alimentar</h1>
-          <p>Joao Benassi - Protocolo de Recomposicao</p>
+          <h1>{t("app.brandTitle")}</h1>
+          <p>{t("app.brandSubtitle")}</p>
         </div>
         <div className="header-status">
-          <div className="status-chip"><span className="status-dot" /><span>Peso: 84,1 kg</span></div>
-          <div className="status-chip">Agua: {water} L / 3.8 L</div>
+          <div className="status-chip"><span className="status-dot" /><span>{t("app.weight")}: 84,1 kg</span></div>
+          <div className="status-chip">{t("app.water")}: {water} L / 3.8 L</div>
           <button className="theme-toggle" type="button" onClick={() => dispatch({ type: "theme/toggle" })}>
-            <Sun size={16} /><span>{state.theme === "light" ? "Escuro" : "Claro"}</span>
+            <Sun size={16} /><span>{state.theme === "light" ? t("app.dark") : t("app.light")}</span>
           </button>
           <button className="theme-toggle alerts-toggle" type="button"><Bell size={16} /><span>{globalAlerts(state).length}</span></button>
         </div>
       </div>
 
       <section className="data-panel">
-        <h2>Memoria</h2>
+        <h2>{t("app.memory")}</h2>
         <p>{auth.syncStatus}</p>
         <div className="account-card">
           <div>
-            <strong>{auth.user?.displayName || "Sem login"}</strong>
-            <span>{auth.user?.email || "Firestore desligado"}</span>
+            <strong>{auth.user?.displayName || t("app.noLogin")}</strong>
+            <span>{auth.user?.email || t("app.firestoreOff")}</span>
           </div>
         </div>
         <div className="data-actions">
           {auth.user ? (
-            <button type="button" onClick={() => auth.signOut().then(() => notify("Conta desconectada."))}>Sair</button>
+            <button type="button" onClick={() => auth.signOut().then(() => notify("Conta desconectada."))}>{t("app.signOut")}</button>
           ) : (
-            <button type="button" onClick={() => auth.signIn().catch(() => notify("Nao foi possivel entrar."))}>Entrar com Google</button>
+            <button type="button" onClick={() => auth.signIn().catch(() => notify("Não foi possível entrar."))}>{t("app.signInGoogle")}</button>
           )}
         </div>
         <div className="data-actions">
-          <button type="button" onClick={() => exportState(state)}>Exportar</button>
+          <button type="button" onClick={() => exportState(state)}>{t("app.export")}</button>
           <label className="import-button">
-            Importar
+            {t("app.import")}
             <input type="file" accept="application/json" onChange={(event) => importStateFile(event, dispatch, notify)} />
           </label>
         </div>
       </section>
 
-      <nav className="nav-tabs" aria-label="Abas principais">
+      <nav className="nav-tabs" aria-label={t("app.mainTabs")}>
         {tabs.map((tab) => {
           const Icon = tabIcons[tab.id];
           return (
             <button key={tab.id} className={`nav-tab ${activeTab === tab.id ? "active" : ""}`} type="button" onClick={() => onTabChange(tab.id)}>
-              <Icon size={18} /> {tab.label}
+              <Icon size={18} /> {t(`tabs.${tab.id}`)}
             </button>
           );
         })}
@@ -86,7 +86,7 @@ async function importStateFile(event, dispatch, notify) {
     dispatch({ type: "replace", state: JSON.parse(await file.text()) });
     notify("Dados importados.");
   } catch {
-    notify("Arquivo invalido.");
+    notify("Arquivo inválido.");
   } finally {
     event.target.value = "";
   }

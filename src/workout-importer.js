@@ -61,7 +61,7 @@ export async function importWorkoutFromText({ text, settings }) {
 
 function normalizeImportedWorkout(value) {
   const days = Array.isArray(value?.days) ? value.days : [];
-  if (!days.length) throw new Error("A IA nao encontrou dias de treino no texto.");
+  if (!days.length) throw new Error("A IA não encontrou dias de treino no texto.");
 
   return {
     planName: String(value.planName || "Treino importado").trim() || "Treino importado",
