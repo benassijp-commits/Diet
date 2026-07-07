@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAppStore } from "../hooks/useAppStore.js";
 import { tabs } from "../state/app-state.js";
 import { createTranslator, normalizeLanguage } from "../i18n/index.js";
+import { listenForForegroundMessages } from "../services/push-notifications.js";
 import Sidebar from "./layout/Sidebar.jsx";
 import Topbar from "./layout/Topbar.jsx";
 import MealsTab from "./meals/MealsTab.jsx";
@@ -21,6 +22,15 @@ export default function App() {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
     navigator.serviceWorker.register("/sw.js").catch((error) => console.warn("Service worker registration failed", error));
+  }, []);
+
+  useEffect(() => {
+    let unsubscribe = null;
+    listenForForegroundMessages((message) => notify(message)).then((stopListening) => {
+      unsubscribe = stopListening;
+    }).catch((error) => console.warn("FCM foreground listener unavailable", error));
+
+    return () => unsubscribe?.();
   }, []);
 
   const notify = (message) => {

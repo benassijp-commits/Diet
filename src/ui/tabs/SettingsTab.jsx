@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { Database, Globe2, Sparkles } from "lucide-react";
+import { Bell, Database, Download, Globe2, Sparkles } from "lucide-react";
 import { clearAiSettings, loadAiSettings, saveAiSettings } from "../../ai-settings.js";
 import { SUPPORTED_LANGUAGES } from "../../i18n/index.js";
+import { enablePushNotifications, getPushEnvironmentStatus } from "../../services/push-notifications.js";
+import InstallAppButton from "../shared/InstallAppButton.jsx";
 
 export default function SettingsTab({ state, dispatch, notify, t, language }) {
   const [settings, setSettings] = useState(() => {
@@ -9,7 +11,24 @@ export default function SettingsTab({ state, dispatch, notify, t, language }) {
     const saved = state.appSettings?.aiSettings || {};
     return { ...local, ...saved, apiKey: local.apiKey || saved.apiKey || "" };
   });
+  const [notificationStatus, setNotificationStatus] = useState(() => getPushEnvironmentStatus().message);
+  const [isEnablingNotifications, setIsEnablingNotifications] = useState(false);
   const publicSettings = ({ apiKey, ...rest }) => rest;
+
+  const handleEnableNotifications = async () => {
+    setIsEnablingNotifications(true);
+    try {
+      const result = await enablePushNotifications();
+      setNotificationStatus(result.message);
+      notify(result.message);
+    } catch (error) {
+      console.error(error);
+      setNotificationStatus(t("notifications.error"));
+      notify(t("notifications.error"));
+    } finally {
+      setIsEnablingNotifications(false);
+    }
+  };
 
   return (
     <section className="tab-panel active">
@@ -24,6 +43,21 @@ export default function SettingsTab({ state, dispatch, notify, t, language }) {
               </select>
             </label>
           </div>
+        </section>
+
+        <section className="stock-editor">
+          <h4><Bell size={16} /> {t("notifications.title")}</h4>
+          <div className="stock-editor-grid compact">
+            <p className="settings-help">{notificationStatus}</p>
+            <button type="button" onClick={handleEnableNotifications} disabled={isEnablingNotifications}>
+              {isEnablingNotifications ? t("notifications.enabling") : t("notifications.enable")}
+            </button>
+          </div>
+        </section>
+
+        <section className="stock-editor">
+          <h4><Download size={16} /> {t("install.title")}</h4>
+          <InstallAppButton t={t} />
         </section>
 
         <section className="stock-editor">
