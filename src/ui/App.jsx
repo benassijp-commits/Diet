@@ -41,7 +41,7 @@ export default function App() {
         {activeTab === "workouts" && <WorkoutsTab state={state} dispatch={dispatch} notify={notify} t={t} language={language} />}
         {activeTab === "shopping" && <ShoppingTab state={state} dispatch={dispatch} t={t} language={language} />}
         {activeTab === "stock" && <StockTab state={state} dispatch={dispatch} notify={notify} t={t} language={language} />}
-        {activeTab === "log" && <LogTab state={state} dispatch={dispatch} />}
+        {activeTab === "log" && <LogTab state={state} dispatch={dispatch} t={t} language={language} />}
         {activeTab === "settings" && <SettingsTab state={state} dispatch={dispatch} auth={auth} notify={notify} t={t} language={language} />}
       </main>
       <div className={`toast ${toast ? "show" : ""}`} role="status" aria-live="polite">{toast}</div>

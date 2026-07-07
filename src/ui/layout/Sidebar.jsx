@@ -42,16 +42,16 @@ export default function Sidebar({ state, auth, activeTab, onTabChange, dispatch,
         </div>
         <div className="data-actions">
           {auth.user ? (
-            <button type="button" onClick={() => auth.signOut().then(() => notify("Conta desconectada."))}>{t("app.signOut")}</button>
+            <button type="button" onClick={() => auth.signOut().then(() => notify(t("app.signOutSuccess")))}>{t("app.signOut")}</button>
           ) : (
-            <button type="button" onClick={() => auth.signIn().catch(() => notify("Não foi possível entrar."))}>{t("app.signInGoogle")}</button>
+            <button type="button" onClick={() => auth.signIn().catch(() => notify(t("app.signInError")))}>{t("app.signInGoogle")}</button>
           )}
         </div>
         <div className="data-actions">
           <button type="button" onClick={() => exportState(state)}>{t("app.export")}</button>
           <label className="import-button">
             {t("app.import")}
-            <input type="file" accept="application/json" onChange={(event) => importStateFile(event, dispatch, notify)} />
+            <input type="file" accept="application/json" onChange={(event) => importStateFile(event, dispatch, notify, t)} />
           </label>
         </div>
       </section>
@@ -79,14 +79,14 @@ function exportState(state) {
   URL.revokeObjectURL(link.href);
 }
 
-async function importStateFile(event, dispatch, notify) {
+async function importStateFile(event, dispatch, notify, t) {
   const file = event.target.files?.[0];
   if (!file) return;
   try {
     dispatch({ type: "replace", state: JSON.parse(await file.text()) });
-    notify("Dados importados.");
+    notify(t("app.importSuccess"));
   } catch {
-    notify("Arquivo inválido.");
+    notify(t("app.importInvalid"));
   } finally {
     event.target.value = "";
   }

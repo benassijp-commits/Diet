@@ -40,7 +40,7 @@ export default function SettingsTab({ state, dispatch, notify, t, language }) {
 
         <section className="stock-editor">
           <h4><Database size={16} /> {t("settings.diets")}</h4>
-          <div className="alert-list">{state.dietVersions.map((version) => <div className="alert-item" key={version.id}><strong>{version.name}</strong><span>{version.status} - {t("settings.started")} {version.activatedAt}</span></div>)}</div>
+          <div className="alert-list">{state.dietVersions.map((version) => <div className="alert-item" key={version.id}><strong>{version.name}</strong><span>{version.status === "active" ? t("common.active") : t("common.archived")} - {t("settings.started")} {version.activatedAt}</span></div>)}</div>
         </section>
       </div>
     </section>

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Save } from "lucide-react";
 import {
-  allIngredientCatalogItems,
   getOptionKeys,
   nextOptionKey,
   labelForIngredient,
@@ -17,7 +16,6 @@ export default function MealEditor({ state, meal, initialOption, onClose, dispat
     const optionKeys = getOptionKeys(meal);
     return optionKeys.includes(initialOption) ? initialOption : optionKeys[0] || "A";
   });
-  const stockItems = allIngredientCatalogItems(state);
   const optionKeys = getOptionKeys(draft);
 
   const updateItem = (index, patch) => {
@@ -59,39 +57,39 @@ export default function MealEditor({ state, meal, initialOption, onClose, dispat
   };
 
   return (
-    <Modal title={`Editar ${meal.title}`} onClose={onClose}>
+    <Modal title={t("meals.editTitle", { name: meal.title })} onClose={onClose}>
       <div className="modal-grid">
-        <label>Nome<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
-        <label>Descrição<input value={draft.subtitle} onChange={(event) => setDraft({ ...draft, subtitle: event.target.value })} /></label>
+        <label>{t("common.name")}<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
+        <label>{t("common.description")}<input value={draft.subtitle} onChange={(event) => setDraft({ ...draft, subtitle: event.target.value })} /></label>
       </div>
       <section className="option-editor">
         <div className="cart-header">
           <div>
-            <h4>Opções e ingredientes</h4>
+            <h4>{t("meals.optionsIngredients")}</h4>
             <label className="option-picker">
-              Opção em edição
+              {t("meals.editingOption")}
               <select value={selectedOption} onChange={(event) => setSelectedOption(event.target.value)}>
-                {optionKeys.map((option) => <option key={option} value={option}>Opção {option}</option>)}
+                {optionKeys.map((option) => <option key={option} value={option}>{t("common.option")} {option}</option>)}
               </select>
             </label>
           </div>
-          <button type="button" onClick={addOption}>Adicionar opção</button>
+          <button type="button" onClick={addOption}>{t("meals.addOption")}</button>
         </div>
         <div className="option-editor-block">
           <header>
-            <h5>Opção {selectedOption}</h5>
+            <h5>{t("common.option")} {selectedOption}</h5>
             <div>
-              <button className="secondary-button" type="button" onClick={() => setDraft((current) => ({ ...current, options: { ...current.options, [selectedOption]: [...(current.options[selectedOption] || []), { label: stockItems[0]?.name || "Novo alimento", qty: 0, unit: stockItems[0]?.unit || "g", stockItemId: stockItems[0]?.id || "" }] } }))}>Adicionar ingrediente</button>
-              <button className="secondary-button" type="button" disabled={optionKeys.length <= 1} onClick={deleteOption}>Excluir opção</button>
+              <button className="secondary-button" type="button" onClick={() => setDraft((current) => ({ ...current, options: { ...current.options, [selectedOption]: [...(current.options[selectedOption] || []), { label: "", qty: 0, unit: "g", stockItemId: "" }] } }))}>{t("common.addIngredient")}</button>
+              <button className="secondary-button" type="button" disabled={optionKeys.length <= 1} onClick={deleteOption}>{t("meals.deleteOption")}</button>
             </div>
           </header>
           <div className="ingredient-editor-list">
             {(draft.options[selectedOption] || []).map((item, index) => (
               <div className="ingredient-editor-row" key={index}>
-                <label>Nome<input value={item.label} onChange={(event) => updateItem(index, { label: event.target.value })} /></label>
-                <label>Quantidade<input type="number" min="0" step="0.1" value={item.qty} onChange={(event) => updateItem(index, { qty: Number(event.target.value) })} /></label>
+                <label>{t("common.name")}<input value={item.label} onChange={(event) => updateItem(index, { label: event.target.value })} /></label>
+                <label>{t("common.quantity")}<input type="number" min="0" step="0.1" value={item.qty} onChange={(event) => updateItem(index, { qty: Number(event.target.value) })} /></label>
                 <label>
-                  Unidade
+                  {t("common.unit")}
                   <select
                     value={item.unit}
                     onChange={(event) => updateItem(index, { unit: event.target.value })}
@@ -106,20 +104,20 @@ export default function MealEditor({ state, meal, initialOption, onClose, dispat
                 <IngredientAutocomplete
                   state={state}
                   value={item.stockItemId}
-                  onChange={(id) => updateItem(index, { stockItemId: id, label: item.label || labelForIngredient(state, id), unit: normalizeAllowedUnit(unitForStockItem(state, id)) })}
+                  onChange={(id) => updateItem(index, { stockItemId: id, label: item.label || labelForIngredient(state, id, language), unit: normalizeAllowedUnit(unitForStockItem(state, id)) })}
                   language={language}
                   t={t}
                 />
-                <button className="secondary-button" type="button" onClick={() => deleteItem(index)}>Excluir</button>
+                <button className="secondary-button" type="button" onClick={() => deleteItem(index)}>{t("common.delete")}</button>
               </div>
             ))}
-            {!(draft.options[selectedOption] || []).length && <p className="empty-state">Nenhum ingrediente nesta opção.</p>}
+            {!(draft.options[selectedOption] || []).length && <p className="empty-state">{t("meals.noIngredientsOption")}</p>}
           </div>
         </div>
       </section>
       <footer>
-        <button className="secondary-button" type="button" onClick={onClose}>Cancelar</button>
-        <button type="button" onClick={() => { dispatch({ type: "meal/update", meal: draft }); onClose(); }}><Save size={16} /> Salvar refeição</button>
+        <button className="secondary-button" type="button" onClick={onClose}>{t("common.cancel")}</button>
+        <button type="button" onClick={() => { dispatch({ type: "meal/update", meal: draft }); onClose(); }}><Save size={16} /> {t("meals.saveMeal")}</button>
       </footer>
     </Modal>
   );

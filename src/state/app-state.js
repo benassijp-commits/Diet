@@ -1,7 +1,40 @@
-import { BASE_STOCK_ITEMS, MEALS as BASE_MEALS } from "../../data-model.js";
-import nutritionCatalog from "../../data/nutrition/app-nutrition.pt.clean.json";
+import { BASE_STOCK_ITEMS } from "../../data-model.js";
 import { DAILY_TARGETS, LEGACY_STORE_KEY, OPTION_LETTERS, STORE_KEY } from "../config.js";
 import { clone, formatQty, normalizeText, timestamp, todayKey } from "../utils.js";
+
+const nutritionCatalogModules = import.meta.glob("../../data/nutrition/app-nutrition*.json", { eager: true, import: "default" });
+const nutritionCatalog =
+  nutritionCatalogModules["../../data/nutrition/app-nutrition.multilang.json"] ||
+  nutritionCatalogModules["../../data/nutrition/app-nutrition.pt.clean.json"] ||
+  {};
+
+export const SUPPORTED_CONTENT_LANGUAGES = ["pt", "en", "nl", "fr", "es", "it"];
+
+const BASE_STOCK_ITEM_TRANSLATIONS = {
+  stk_eggs: { en: "Whole egg", aliases: ["Egg", "Eggs"] },
+  stk_egg_whites: { en: "Egg white", aliases: ["Egg whites"] },
+  stk_bread: { en: "Whole grain bread", aliases: ["Whole wheat bread", "Bread"] },
+  stk_banana: { en: "Banana", aliases: ["Bananas"] },
+  stk_albumin: { en: "Albumin powder", aliases: ["Albumin"] },
+  stk_oats: { en: "Rolled oats", aliases: ["Oats"] },
+  stk_oat_flour: { en: "Oat flour", aliases: ["Oats flour"] },
+  stk_peanut_butter: { en: "Peanut butter", aliases: ["Peanut paste"] },
+  stk_butter: { en: "Butter", aliases: [] },
+  stk_strawberries: { en: "Strawberries", aliases: ["Strawberry"] },
+  stk_chicken_breast: { en: "Chicken breast", aliases: ["Chicken"] },
+  stk_rice: { en: "Cooked rice", aliases: ["Rice", "Cooked white rice"] },
+  stk_olive_oil: { en: "Olive oil", aliases: [] },
+  stk_vegetables: { en: "Mixed vegetables", aliases: ["Vegetables"] },
+  stk_lean_beef: { en: "Lean beef", aliases: ["Beef"] },
+  stk_potato_puree: { en: "Reconstituted instant mashed potatoes", aliases: ["Mashed potatoes", "Potato puree", "Potato"] },
+  stk_pasta: { en: "Cooked pasta", aliases: ["Pasta"] },
+  stk_tomato_sauce: { en: "Natural tomato sauce", aliases: ["Tomato sauce"] },
+  stk_light_mayo: { en: "Light mayonnaise", aliases: ["Light mayo", "Mayonnaise"] },
+  stk_salmon: { en: "Grilled salmon", aliases: ["Salmon"] },
+  stk_broccoli_carrot: { en: "Steamed broccoli and carrot", aliases: ["Broccoli and carrot", "Broccoli", "Carrot"] },
+  stk_nuts: { en: "Nuts or almonds", aliases: ["Nuts", "Almonds"] },
+  stk_lactose_free_milk: { en: "Lactose-free skim milk", aliases: ["Skim milk", "Milk"] },
+};
 
 export const tabs = [
   { id: "meals", label: "Refeições", title: "Refeições" },
@@ -22,13 +55,13 @@ const BASE_INGREDIENT_CATALOG_IDS = new Set(BASE_INGREDIENT_CATALOG_ITEMS.map((i
 
 export const initialState = {
   version: 3,
-  meals: clone(BASE_MEALS),
-  selections: Object.fromEntries(BASE_MEALS.map((meal) => [meal.id, "A"])),
+  meals: [],
+  selections: {},
   dailyLogs: {},
   stockItems: Object.fromEntries(BASE_INGREDIENT_CATALOG_ITEMS.map((item) => [item.id, item])),
   stock: {},
   log: [],
-  shoppingCart: Object.fromEntries(BASE_MEALS.map((meal) => [meal.id, { A: 7, B: 0, C: 0 }])),
+  shoppingCart: {},
   shoppingPrices: {},
   stockManagementEnabled: true,
   collapsedMeals: {},
@@ -293,8 +326,8 @@ export function getActiveWorkoutPlan(state) {
   return state.workoutPlans.find((plan) => plan.id === state.activeWorkoutPlanId) || state.workoutPlans[0] || null;
 }
 
-export function getShoppingRows(state) {
-  return aggregate(state, getMealItemsForPlan(state)).map((row) => {
+export function getShoppingRows(state, language = "pt") {
+  return aggregate(state, getMealItemsForPlan(state), language).map((row) => {
     const inStock = getStockQty(state, row.stockItemId);
     const toBuy = Math.max(0, row.qty - inStock);
     return { ...row, inStock, toBuy, estimatedCost: estimateIngredientCost(state, row.stockItemId, toBuy) };
@@ -311,7 +344,9 @@ export function currentNutritionTotals(state) {
 
 export function currentDietTargets(state) {
   const totals = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
-  for (const meal of getMeals(state)) {
+  const meals = getMeals(state);
+  if (!meals.length) return totals;
+  for (const meal of meals) {
     const option = state.selections[meal.id] || getOptionKeys(meal)[0];
     for (const item of meal.options?.[option] || []) addNutrition(state, totals, item);
   }
@@ -328,16 +363,19 @@ export function nutritionSummary(totals) {
   return `${formatQty(totals.kcal)} kcal | ${formatQty(totals.protein)} P / ${formatQty(totals.carbs)} C / ${formatQty(totals.fat)} G`;
 }
 
-export function stockItemSearchLabel(item) {
-  return ingredientSearchLabel(item);
+export function stockItemSearchLabel(item, language = "pt") {
+  return ingredientSearchLabelForLanguage(item, language);
 }
 
-export function allStockItems(state) {
-  return Object.values(state.stockItems).sort((a, b) => a.name.localeCompare(b.name));
+export function allStockItems(state, language = "pt") {
+  return Object.keys(state.stock || {})
+    .filter((id) => getStockQty(state, id) > 0 && state.stockItems[id])
+    .map((id) => ensureCatalogLanguageFields(state.stockItems[id]))
+    .sort((a, b) => ingredientNameForLanguage(a, language).localeCompare(ingredientNameForLanguage(b, language)));
 }
 
 export function allIngredientCatalogItems(state) {
-  return dedupeIngredientCatalogItems(Object.values(state.stockItems))
+  return dedupeIngredientCatalogItems(Object.values(state.stockItems).map(ensureCatalogLanguageFields))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -352,17 +390,17 @@ export function ingredientSearchLabelForLanguage(item, language = "pt") {
 
 export function ingredientNameForLanguage(item, language = "pt") {
   if (!item) return "";
-  const lang = language === "en" ? "en" : "pt";
+  const lang = normalizeContentLanguage(language);
   return item.names?.[lang] || item.names?.pt || item.name || item.id || "";
 }
 
 export function ingredientSearchText(item, language = "pt") {
-  const lang = language === "en" ? "en" : "pt";
+  const lang = normalizeContentLanguage(language);
   const names = [
-    item?.name,
     item?.names?.[lang],
     item?.names?.pt,
     item?.names?.en,
+    item?.name,
     ...(item?.aliasesByLanguage?.[lang] || []),
     ...(item?.aliasesByLanguage?.pt || []),
     ...(item?.aliasesByLanguage?.en || []),
@@ -375,16 +413,19 @@ export function getStockQty(state, stockItemId) {
   return Math.max(0, Number(state.stock[stockItemId] || 0));
 }
 
-export function labelForStockItem(state, stockItemId) {
-  return labelForIngredient(state, stockItemId);
+export function labelForStockItem(state, stockItemId, language = "pt") {
+  return labelForIngredient(state, stockItemId, language);
 }
 
 export function unitForStockItem(state, stockItemId) {
   return unitForIngredient(state, stockItemId);
 }
 
-export function labelForIngredient(state, id) {
-  return state.stockItems[id]?.name || id;
+export function labelForIngredient(state, id, language = "pt") {
+  const item = state.stockItems[id];
+  if (!item) return id;
+  const lang = normalizeContentLanguage(language);
+  return item.names?.[lang] || item.names?.pt || item.name || id;
 }
 
 export function unitForIngredient(state, id) {
@@ -445,22 +486,58 @@ function mergeIngredientCatalog(baseItems, nutritionItems) {
   return [...byId.values()];
 }
 
+function normalizeContentLanguage(language) {
+  return SUPPORTED_CONTENT_LANGUAGES.includes(language) ? language : "pt";
+}
+
+function uniqueTextValues(values) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const text = String(value || "").trim();
+    const normalized = normalizeText(text);
+    if (!text || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(text);
+  }
+  return result;
+}
+
+function aliasValues(aliases, language) {
+  return (aliases || [])
+    .filter((alias) => typeof alias === "string" || !language || alias?.lang === language)
+    .map((alias) => typeof alias === "string" ? alias : alias?.value)
+    .filter(Boolean);
+}
+
 function ensureCatalogLanguageFields(item) {
   const aliases = item.aliases || [];
+  const translation = BASE_STOCK_ITEM_TRANSLATIONS[item.id] || {};
+  const ptName = item.names?.pt || item.name;
+  const enName = item.names?.en || translation.en;
   return {
     ...item,
     unit: normalizeAllowedUnit(item.unit),
     names: {
-      pt: item.names?.pt || item.name,
-      ...(item.names?.en ? { en: item.names.en } : {}),
+      ...(item.names || {}),
+      pt: ptName,
+      ...(enName ? { en: enName } : {}),
     },
     aliasesByLanguage: {
-      pt: [
-        item.name,
+      ...(item.aliasesByLanguage || {}),
+      pt: uniqueTextValues([
+        ptName,
         ...(item.aliasesByLanguage?.pt || []),
-        ...aliases.map((alias) => typeof alias === "string" ? alias : alias?.value).filter(Boolean),
-      ],
-      ...(item.aliasesByLanguage?.en ? { en: item.aliasesByLanguage.en } : {}),
+        ...aliasValues(aliases, "pt"),
+      ]),
+      ...(enName ? {
+        en: uniqueTextValues([
+          enName,
+          ...(translation.aliases || []),
+          ...(item.aliasesByLanguage?.en || []),
+          ...aliasValues(aliases, "en"),
+        ]),
+      } : {}),
     },
   };
 }
@@ -482,15 +559,24 @@ function nutritionCatalogItemToStockItem(item) {
     },
     aliases: item?.aliases || [],
     names: {
+      ...(item?.names || {}),
       pt: item?.names?.pt || name,
       ...(item?.names?.en ? { en: item.names.en } : {}),
     },
     aliasesByLanguage: {
-      pt: [
+      ...(item?.aliasesByLanguage || {}),
+      pt: uniqueTextValues([
         item?.names?.pt || name,
-        ...(item?.aliases || []).map((alias) => typeof alias === "string" ? alias : alias?.value).filter(Boolean),
-      ],
-      ...(item?.names?.en ? { en: [item.names.en] } : {}),
+        ...(item?.aliasesByLanguage?.pt || []),
+        ...aliasValues(item?.aliases, "pt"),
+      ]),
+      ...(item?.names?.en ? {
+        en: uniqueTextValues([
+          item.names.en,
+          ...(item?.aliasesByLanguage?.en || []),
+          ...aliasValues(item?.aliases, "en"),
+        ]),
+      } : {}),
     },
     nutritionSource: item?.source?.id || nutritionCatalog?.source || "nutrition_catalog",
   };
@@ -536,6 +622,10 @@ function readJson(key) {
 function ensureDietVersionState(next) {
   if (!Array.isArray(next.dietVersions)) next.dietVersions = [];
   if (next.dietVersions.length && next.activeDietVersionId) return;
+  if (!Array.isArray(next.meals) || !next.meals.length) {
+    next.activeDietVersionId = "";
+    return;
+  }
   const id = `diet_${todayKey()}_baseline`;
   next.activeDietVersionId = id;
   next.dietVersions = [{
@@ -589,12 +679,12 @@ function addNutrition(state, totals, item) {
   totals.fat += qty * Number(nutrition.fat || 0);
 }
 
-function aggregate(state, items) {
+function aggregate(state, items, language = "pt") {
   const map = new Map();
   for (const current of items) {
     const stockItem = state.stockItems[current.stockItemId];
     if (!stockItem) continue;
-    const row = map.get(stockItem.id) || { stockItemId: stockItem.id, name: stockItem.name, qty: 0, unit: stockItem.unit };
+    const row = map.get(stockItem.id) || { stockItemId: stockItem.id, name: labelForIngredient(state, stockItem.id, language), qty: 0, unit: stockItem.unit };
     row.qty += Number(current.qty || 0);
     map.set(stockItem.id, row);
   }

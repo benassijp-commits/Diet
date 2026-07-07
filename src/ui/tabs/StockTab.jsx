@@ -3,8 +3,10 @@ import { loadAiSettings } from "../../ai-settings.js";
 import { resolveIngredientNutrition } from "../../nutrition-service.js";
 import {
   allIngredientCatalogItems,
+  allStockItems,
   createStockItemId,
   getStockQty,
+  ingredientNameForLanguage,
   labelForIngredient,
   normalizeAllowedUnit,
   priceForIngredient,
@@ -29,7 +31,8 @@ const emptyDraft = {
 
 export default function StockTab({ state, dispatch, notify, t = (key) => key, language = "pt" }) {
   const catalog = allIngredientCatalogItems(state);
-  const [stockItemId, setStockItemId] = useState(catalog[0]?.id || "");
+  const stockRows = allStockItems(state, language);
+  const [stockItemId, setStockItemId] = useState("");
   const [qty, setQty] = useState("");
   const [kind, setKind] = useState("entrada");
   const [detail, setDetail] = useState("");
@@ -40,7 +43,7 @@ export default function StockTab({ state, dispatch, notify, t = (key) => key, la
     const price = priceForIngredient(state, id);
     setDraft({
       id,
-      name: ingredient.name || "",
+      name: labelForIngredient(state, id, language),
       unit: normalizeAllowedUnit(ingredient.unit),
       kcal: ingredient.nutrition?.kcal ?? "",
       protein: ingredient.nutrition?.protein ?? "",
@@ -119,10 +122,10 @@ export default function StockTab({ state, dispatch, notify, t = (key) => key, la
           return;
         }
         if (kind === "saida" && amount > getStockQty(state, stockItemId)) {
-          notify(t("stock.exitTooHigh"));
+        notify(t("stock.exitTooHigh"));
           return;
         }
-        dispatch({ type: "stock/register", kind, detail: detail.trim() || "Registro manual", items: [{ stockItemId, name: labelForIngredient(state, stockItemId), qty: amount, unit: unitForIngredient(state, stockItemId) }] });
+        dispatch({ type: "stock/register", kind, detail: detail.trim() || "Registro manual", items: [{ stockItemId, name: labelForIngredient(state, stockItemId, language), qty: amount, unit: unitForIngredient(state, stockItemId) }] });
         setQty("");
         setDetail("");
         notify(t("stock.movementSaved"));
@@ -156,12 +159,12 @@ export default function StockTab({ state, dispatch, notify, t = (key) => key, la
       <div className="table-wrap">
         <table>
           <thead><tr><th>{t("shopping.ingredient")}</th><th>{t("tabs.stock")}</th><th>{t("stock.unit")}</th><th>{t("stock.price")}</th><th>{t("stock.status")}</th></tr></thead>
-          <tbody>{catalog.map((item) => {
+          <tbody>{stockRows.map((item) => {
             const price = priceForIngredient(state, item.id);
             const status = stockStatusForIngredient(state, item.id);
             return (
               <tr key={item.id}>
-                <td>{item.name}</td>
+                <td>{ingredientNameForLanguage(item, language)}</td>
                 <td><strong>{formatQty(getStockQty(state, item.id))}</strong></td>
                 <td>{item.unit}</td>
                 <td>{price.price ? `R$ ${formatQty(price.price)} / ${formatQty(price.referenceQty)} ${price.referenceUnit}` : "-"}</td>
@@ -170,6 +173,7 @@ export default function StockTab({ state, dispatch, notify, t = (key) => key, la
             );
           })}</tbody>
         </table>
+        {!stockRows.length && <p className="empty-state">{t("stock.empty")}<br />{t("stock.emptyHint")}</p>}
       </div>
     </section>
   );

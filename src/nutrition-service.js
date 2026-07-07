@@ -10,7 +10,8 @@ export function getNutritionBase() {
 
 export async function loadNutritionBase() {
   if (nutritionBase) return nutritionBase;
-  const response = await fetch("data/nutrition/app-nutrition.pt.clean.json");
+  let response = await fetch("data/nutrition/app-nutrition.multilang.json");
+  if (!response.ok) response = await fetch("data/nutrition/app-nutrition.pt.clean.json");
   if (!response.ok) throw new Error("Não foi possível carregar a base nutricional.");
   nutritionBase = await response.json();
   return nutritionBase;
@@ -33,6 +34,8 @@ export function nutritionAliasValues(item) {
     item?.names?.pt,
     item?.name,
     item?.names?.en,
+    ...(item?.aliasesByLanguage?.pt || []),
+    ...(item?.aliasesByLanguage?.en || []),
     ...(item?.aliases || []).map((alias) => typeof alias === "string" ? alias : alias?.value),
   ].filter(Boolean);
 
@@ -78,7 +81,7 @@ export function findNutritionItemById(id) {
 export function findNutritionItemByName(name) {
   const normalized = normalizeText(name);
   if (!normalized) return null;
-  return nutritionBase?.items?.find((item) => normalizeText(displayNutritionName(item)) === normalized) || null;
+  return nutritionBase?.items?.find((item) => nutritionAliasValues(item).some((value) => normalizeText(value) === normalized)) || null;
 }
 
 function canonicalIngredientName(name) {
@@ -130,6 +133,8 @@ function stockItemNames(item) {
     item?.name,
     item?.names?.pt,
     item?.names?.en,
+    ...(item?.aliasesByLanguage?.pt || []),
+    ...(item?.aliasesByLanguage?.en || []),
     ...(item?.aliases || []).map((alias) => typeof alias === "string" ? alias : alias?.value),
   ].filter(Boolean);
 }
@@ -274,7 +279,7 @@ export async function resolveIngredientNutrition({ name, unit, aiSettings }) {
     return null;
   });
 
-  const matchedLocal = base?.items?.find((item) => normalizeText(displayNutritionName(item)) === normalizeText(name));
+  const matchedLocal = base?.items?.find((item) => nutritionAliasValues(item).some((value) => normalizeText(value) === normalizeText(name)));
   if (matchedLocal) {
     return {
       nutrition: scaleNutrition(matchedLocal.nutrition, matchedLocal.referenceAmount),

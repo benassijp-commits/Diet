@@ -9,10 +9,10 @@ import {
 import { normalizeText } from "../../utils.js";
 
 export default function IngredientAutocomplete({ state, value, onChange, label = "Ingrediente", disabled = false, language = "pt", t }) {
-  const selected = value ? state.stockItems[value] : null;
-  const [query, setQuery] = useState(selected ? ingredientSearchLabelForLanguage(selected, language) : "");
   const [open, setOpen] = useState(false);
   const items = allIngredientCatalogItems(state);
+  const selected = value ? items.find((item) => item.id === value) || state.stockItems[value] : null;
+  const [query, setQuery] = useState(selected ? ingredientSearchLabelForLanguage(selected, language) : "");
   const results = useMemo(() => {
     const needle = normalizeText(query);
     const ranked = items
@@ -37,7 +37,7 @@ export default function IngredientAutocomplete({ state, value, onChange, label =
           setOpen(true);
         }}
         onFocus={() => {
-          setQuery(selected ? ingredientNameForLanguage(selected, language) || labelForIngredient(state, value) : query);
+          setQuery(selected ? ingredientNameForLanguage(selected, language) || labelForIngredient(state, value, language) : query);
           setOpen(true);
         }}
         disabled={disabled}

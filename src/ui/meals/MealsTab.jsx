@@ -10,7 +10,6 @@ import {
   labelForIngredient,
   labelForStockItem,
   normalizeAllowedUnit,
-  stockItemSearchLabel,
   unitForStockItem,
 } from "../../state/app-state.js";
 import { formatQty } from "../../utils.js";
@@ -32,19 +31,20 @@ export default function MealsTab({ state, dispatch, notify, language = "pt", t }
   const dayLog = currentDayLog(state);
   const meals = getMeals(state);
   const mealBeingEdited = editingMeal ? meals.find((meal) => meal.id === editingMeal.mealId) : null;
+  const locale = language === "en" ? "en-US" : "pt-BR";
 
   return (
     <section className="tab-panel active">
       <div className="diet-layout">
         <aside className="diet-side">
           <section className="metric-panel">
-            <h2>Metas do dia</h2>
-            <Metric label="Calorias" value={`${formatQty(totals.kcal)} / ${formatQty(targets.kcal)} kcal`} />
-            <Metric label="Proteína" value={`${formatQty(totals.protein)} / ${formatQty(targets.protein)} g`} />
-            <Metric label="Carboidrato" value={`${formatQty(totals.carbs)} / ${formatQty(targets.carbs)} g`} />
-            <Metric label="Gordura" value={`${formatQty(totals.fat)} / ${formatQty(targets.fat)} g`} />
+            <h2>{t("meals.targets")}</h2>
+            <Metric label={t("meals.calories")} value={`${formatQty(totals.kcal)} / ${formatQty(targets.kcal)} kcal`} />
+            <Metric label={t("meals.protein")} value={`${formatQty(totals.protein)} / ${formatQty(targets.protein)} g`} />
+            <Metric label={t("meals.carbs")} value={`${formatQty(totals.carbs)} / ${formatQty(targets.carbs)} g`} />
+            <Metric label={t("meals.fat")} value={`${formatQty(totals.fat)} / ${formatQty(targets.fat)} g`} />
             <div className="water-control">
-              <span className="water-label">Água</span>
+              <span className="water-label">{t("app.water")}</span>
               <div>
                 <button type="button" onClick={() => dispatch({ type: "water/add", delta: -0.25 })}>-</button>
                 <strong>{formatQty(dayLog.water)} L</strong>
@@ -53,9 +53,9 @@ export default function MealsTab({ state, dispatch, notify, language = "pt", t }
             </div>
             <progress max="3.8" value={Math.min(dayLog.water, 3.8)} />
             <div className="timing-control">
-              <h3><Clock3 size={16} /> Tolerância entre refeições</h3>
+              <h3><Clock3 size={16} /> {t("meals.timingTitle")}</h3>
               <label>
-                Quantidade de horas mínimas entre refeições
+                {t("meals.minHours")}
                 <input
                   type="number"
                   min="1"
@@ -65,7 +65,7 @@ export default function MealsTab({ state, dispatch, notify, language = "pt", t }
                   onChange={(event) => dispatch({ type: "diet-timing/update", minHoursBetweenMeals: event.target.value })}
                 />
               </label>
-              <p>O app considera até 1 hora acima desse valor como janela aceitável.</p>
+              <p>{t("meals.timingHelp")}</p>
             </div>
           </section>
         </aside>
@@ -73,43 +73,48 @@ export default function MealsTab({ state, dispatch, notify, language = "pt", t }
         <div className="diet-main">
           <div className="toolbar">
             <div>
-              <h3>Seleção de opções</h3>
-              <p>Escolha refeições, registre consumo e monte o carrinho.</p>
+              <h3>{t("meals.selectionTitle")}</h3>
+              <p>{t("meals.selectionSubtitle")}</p>
             </div>
             <div className="toolbar-actions">
               <label className="toggle-control">
                 <input type="checkbox" checked={state.stockManagementEnabled} onChange={(event) => dispatch({ type: "stock/toggle-management", value: event.target.checked })} />
-                Baixar estoque ao registrar
+                {t("meals.reduceStockOnRegister")}
               </label>
-              <button className="secondary-button" type="button" onClick={() => setQuickMealOpen(true)}><Utensils size={16} /> Avulsa</button>
-              <button className="secondary-button" type="button" onClick={() => setImportOpen(true)}><Sparkles size={16} /> Importar dieta</button>
+              <button className="secondary-button" type="button" onClick={() => setQuickMealOpen(true)}><Utensils size={16} /> {t("meals.quick")}</button>
+              <button className="secondary-button" type="button" onClick={() => setImportOpen(true)}><Sparkles size={16} /> {t("meals.importDiet")}</button>
               <button className="secondary-button" type="button" onClick={() => {
-                const name = prompt("Nome da nova dieta:", `Dieta ${new Date().toLocaleDateString("pt-BR")}`);
+                const name = prompt(t("meals.newDietPrompt"), `${t("meals.defaultDietName")} ${new Date().toLocaleDateString(locale)}`);
                 if (name) dispatch({ type: "diet/new", name });
-              }}><FilePlus size={16} /> Nova dieta</button>
-              <select value={state.activeDietVersionId} onChange={(event) => dispatch({ type: "diet/activate", id: event.target.value })}>
-                {state.dietVersions.map((version) => <option key={version.id} value={version.id}>{version.status === "active" ? "Ativa" : "Arquivada"} - {version.name}</option>)}
-              </select>
-              <button className="secondary-button" type="button" onClick={() => dispatch({ type: "meal/add" })}><Plus size={16} /> Adicionar refeição</button>
-              <button className="secondary-button" type="button" onClick={() => { dispatch({ type: "day/reset" }); notify("Dia reiniciado. O estoque não foi alterado."); }}><RotateCcw size={16} /> Reiniciar dia</button>
+              }}><FilePlus size={16} /> {t("meals.newDiet")}</button>
+              {!!state.dietVersions.length && (
+                <select value={state.activeDietVersionId} onChange={(event) => dispatch({ type: "diet/activate", id: event.target.value })}>
+                  {state.dietVersions.map((version) => <option key={version.id} value={version.id}>{version.status === "active" ? t("common.active") : t("common.archived")} - {version.name}</option>)}
+                </select>
+              )}
+              <button className="secondary-button" type="button" onClick={() => dispatch({ type: "meal/add" })}><Plus size={16} /> {t("meals.addMeal")}</button>
+              <button className="secondary-button" type="button" onClick={() => { dispatch({ type: "day/reset" }); notify(t("meals.resetDayDone")); }}><RotateCcw size={16} /> {t("meals.resetDay")}</button>
             </div>
           </div>
 
           <div className="meal-grid">
+            {!meals.length && <p className="empty-state">{t("meals.emptyDiet")}<br />{t("meals.emptyDietHint")}</p>}
             {meals.map((meal) => {
               const optionKeys = getOptionKeys(meal);
               const selected = optionKeys.includes(state.selections[meal.id]) ? state.selections[meal.id] : optionKeys[0];
               return (
-              <MealCard
-                key={meal.id}
-                meal={meal}
-                state={state}
-                completed={dayLog.completedMeals[meal.id]}
-                onEdit={() => setEditingMeal({ mealId: meal.id, option: selected })}
-                onConsume={() => setConsumingMeal({ mealId: meal.id, option: selected })}
-                dispatch={dispatch}
-                notify={notify}
-              />
+                <MealCard
+                  key={meal.id}
+                  meal={meal}
+                  state={state}
+                  completed={dayLog.completedMeals[meal.id]}
+                  onEdit={() => setEditingMeal({ mealId: meal.id, option: selected })}
+                  onConsume={() => setConsumingMeal({ mealId: meal.id, option: selected })}
+                  dispatch={dispatch}
+                  notify={notify}
+                  t={t}
+                  language={language}
+                />
               );
             })}
           </div>
@@ -117,16 +122,16 @@ export default function MealsTab({ state, dispatch, notify, language = "pt", t }
           <section className="weekly-plan-card">
             <div className="cart-header">
               <div>
-                <h4>Carrinho de compras</h4>
-                <p>Resumo das opções adicionadas nas refeições.</p>
+                <h4>{t("meals.cartTitle")}</h4>
+                <p>{t("meals.cartSubtitle")}</p>
               </div>
-              <button className="secondary-button" type="button" onClick={() => dispatch({ type: "cart/clear" })}>Limpar</button>
+              <button className="secondary-button" type="button" onClick={() => dispatch({ type: "cart/clear" })}>{t("common.clear")}</button>
             </div>
-            <CartSummary state={state} dispatch={dispatch} />
+            <CartSummary state={state} dispatch={dispatch} t={t} />
           </section>
         </div>
       </div>
-      {importOpen && <ImportDialog title={language === "en" ? "Import diet with AI" : "Importar dieta com IA"} kind="diet" state={state} onClose={() => setImportOpen(false)} dispatch={dispatch} notify={notify} t={t} />}
+      {importOpen && <ImportDialog title={t("meals.importDietAi")} kind="diet" state={state} onClose={() => setImportOpen(false)} dispatch={dispatch} notify={notify} t={t} />}
       {quickMealOpen && <QuickMealModalV2 state={state} onClose={() => setQuickMealOpen(false)} dispatch={dispatch} notify={notify} language={language} t={t} />}
       {mealBeingEdited && <MealEditor state={state} meal={mealBeingEdited} initialOption={editingMeal.option} onClose={() => setEditingMeal(null)} dispatch={dispatch} language={language} t={t} />}
       {consumingMeal && <ConsumeMealModalV2 state={state} mealId={consumingMeal.mealId} option={consumingMeal.option} onClose={() => setConsumingMeal(null)} dispatch={dispatch} notify={notify} language={language} t={t} />}
@@ -141,80 +146,38 @@ function QuickMealModalV2({ state, onClose, dispatch, notify, language = "pt", t
   const [affectStock, setAffectStock] = useState(state.stockManagementEnabled);
   const updateItem = (index, patch) => setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
   const validItems = items
-    .map((item) => ({ ...item, name: item.name || labelForIngredient(state, item.stockItemId), qty: Math.max(0, Number(item.qty || 0)), unit: normalizeAllowedUnit(item.unit) }))
+    .map((item) => ({ ...item, name: item.name || labelForIngredient(state, item.stockItemId, language), qty: Math.max(0, Number(item.qty || 0)), unit: normalizeAllowedUnit(item.unit) }))
     .filter((item) => item.stockItemId && item.qty > 0);
 
   return (
-    <Modal title="Refeição avulsa" onClose={onClose}>
+    <Modal title={t("meals.quickTitle")} onClose={onClose}>
       <div className="ingredient-editor-list">
         {items.map((item, index) => (
           <div className="ingredient-editor-row" key={index}>
-            <label>Nome exibido<input value={item.name} onChange={(event) => updateItem(index, { name: event.target.value })} /></label>
-            <IngredientAutocomplete state={state} value={item.stockItemId} onChange={(id, ingredient) => updateItem(index, { stockItemId: id, name: ingredient.name, unit: normalizeAllowedUnit(ingredient.unit) })} language={language} t={t} />
-            <label>Quantidade<input type="number" min="0" step="0.1" value={item.qty} onChange={(event) => updateItem(index, { qty: event.target.value })} /></label>
-            <label>Unidade<UnitSelect value={item.unit} onChange={(unit) => updateItem(index, { unit })} /></label>
-            <button className="secondary-button" type="button" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remover</button>
+            <label>{t("meals.displayName")}<input value={item.name} onChange={(event) => updateItem(index, { name: event.target.value })} /></label>
+            <IngredientAutocomplete state={state} value={item.stockItemId} onChange={(id, ingredient) => updateItem(index, { stockItemId: id, name: labelForIngredient(state, id, language), unit: normalizeAllowedUnit(ingredient.unit) })} language={language} t={t} />
+            <label>{t("common.quantity")}<input type="number" min="0" step="0.1" value={item.qty} onChange={(event) => updateItem(index, { qty: event.target.value })} /></label>
+            <label>{t("common.unit")}<UnitSelect value={item.unit} onChange={(unit) => updateItem(index, { unit })} /></label>
+            <button className="secondary-button" type="button" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>{t("common.remove")}</button>
           </div>
         ))}
-        <button className="secondary-button" type="button" onClick={() => setItems((current) => [...current, { stockItemId: "", name: "", qty: "", unit: "g" }])}>Adicionar ingrediente</button>
+        <button className="secondary-button" type="button" onClick={() => setItems((current) => [...current, { stockItemId: "", name: "", qty: "", unit: "g" }])}>{t("common.addIngredient")}</button>
       </div>
       <div className="modal-grid">
-        <label>Observação<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Ex: lanche fora da dieta" /></label>
+        <label>{t("meals.note")}<input value={note} onChange={(event) => setNote(event.target.value)} placeholder={t("meals.notePlaceholder")} /></label>
       </div>
-      <label className="toggle-control"><input type="checkbox" checked={affectStock} onChange={(event) => setAffectStock(event.target.checked)} /> Baixar estoque</label>
+      <label className="toggle-control"><input type="checkbox" checked={affectStock} onChange={(event) => setAffectStock(event.target.checked)} /> {t("meals.reduceStock")}</label>
       <footer>
-        <button className="secondary-button" type="button" onClick={onClose}>Cancelar</button>
+        <button className="secondary-button" type="button" onClick={onClose}>{t("common.cancel")}</button>
         <button type="button" onClick={() => {
           if (!validItems.length || validItems.length !== items.length) {
-            notify("Informe ingredientes válidos e quantidades maiores que zero.");
+            notify(t("meals.invalidItems"));
             return;
           }
           dispatch({ type: "meal/quick-register", items: validItems, note: note.trim(), affectStock });
-          notify("Refeição avulsa registrada.");
+          notify(t("meals.quickSaved"));
           onClose();
-        }}>Registrar avulsa</button>
-      </footer>
-    </Modal>
-  );
-}
-
-function QuickMealModal({ state, onClose, dispatch, notify }) {
-  const stockItems = allIngredientCatalogItems(state);
-  const [stockItemId, setStockItemId] = useState(stockItems[0]?.id || "");
-  const [qty, setQty] = useState("");
-  const [note, setNote] = useState("");
-  const [affectStock, setAffectStock] = useState(state.stockManagementEnabled);
-
-  return (
-    <Modal title="Refeição avulsa" onClose={onClose}>
-      <div className="modal-grid">
-        <label>
-          Ingrediente
-          <select value={stockItemId} onChange={(event) => setStockItemId(event.target.value)}>
-            {stockItems.map((stockItem) => <option key={stockItem.id} value={stockItem.id}>{stockItemSearchLabel(stockItem)}</option>)}
-          </select>
-        </label>
-        <label>
-          Quantidade
-          <input type="number" min="0" step="0.1" value={qty} onChange={(event) => setQty(event.target.value)} required />
-        </label>
-        <label>
-          Observação
-          <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Ex: lanche fora da dieta" />
-        </label>
-      </div>
-      <label className="toggle-control"><input type="checkbox" checked={affectStock} onChange={(event) => setAffectStock(event.target.checked)} /> Baixar estoque</label>
-      <footer>
-        <button className="secondary-button" type="button" onClick={onClose}>Cancelar</button>
-        <button type="button" onClick={() => {
-          if (!stockItemId || !Number(qty)) {
-            notify("Informe ingrediente e quantidade.");
-            return;
-          }
-          dispatch({ type: "meal/quick-register", stockItemId, qty: Number(qty), note: note.trim(), affectStock });
-            notify("Refeição avulsa registrada.");
-          onClose();
-        }}>Registrar avulsa</button>
+        }}>{t("meals.registerQuick")}</button>
       </footer>
     </Modal>
   );
@@ -225,7 +188,7 @@ function ConsumeMealModalV2({ state, mealId, option, onClose, dispatch, notify, 
   const [completedAt, setCompletedAt] = useState(() => toDateTimeLocal(new Date()));
   const [items, setItems] = useState(() => (meal?.options?.[option] || []).map((item) => ({
     ...item,
-    name: item.name || item.label || labelForStockItem(state, item.stockItemId),
+    name: item.name || item.label || labelForStockItem(state, item.stockItemId, language),
     unit: normalizeAllowedUnit(item.unit || unitForStockItem(state, item.stockItemId)),
     qty: Math.max(0, Number(item.qty || 0)),
   })));
@@ -234,114 +197,44 @@ function ConsumeMealModalV2({ state, mealId, option, onClose, dispatch, notify, 
 
   const updateItem = (index, patch) => setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
   const activeItems = items
-    .map((item) => ({ ...item, name: item.name || labelForIngredient(state, item.stockItemId), qty: Math.max(0, Number(item.qty || 0)), unit: normalizeAllowedUnit(item.unit) }))
+    .map((item) => ({ ...item, name: item.name || labelForIngredient(state, item.stockItemId, language), qty: Math.max(0, Number(item.qty || 0)), unit: normalizeAllowedUnit(item.unit) }))
     .filter((item) => item.stockItemId && item.qty > 0);
 
   return (
-    <Modal title="Confirmar consumo" onClose={onClose}>
+    <Modal title={t("meals.confirmConsume")} onClose={onClose}>
       <div className="modal-grid">
-        <label>Refeição<input value={`${meal.title} - Opção ${option}`} readOnly /></label>
-        <label>Horário real<input type="datetime-local" value={completedAt} onChange={(event) => setCompletedAt(event.target.value)} /></label>
+        <label>{t("meals.meal")}<input value={`${meal.title} - ${t("common.option")} ${option}`} readOnly /></label>
+        <label>{t("meals.realTime")}<input type="datetime-local" value={completedAt} onChange={(event) => setCompletedAt(event.target.value)} /></label>
       </div>
       <div className="ingredient-editor-list">
         {items.map((item, index) => (
           <div className="ingredient-editor-row" key={`${item.stockItemId || "new"}-${index}`}>
-            <label>Nome exibido<input value={item.name || item.label || ""} onChange={(event) => updateItem(index, { name: event.target.value })} /></label>
-            <IngredientAutocomplete state={state} value={item.stockItemId} onChange={(id, ingredient) => updateItem(index, { stockItemId: id, name: ingredient.name, unit: normalizeAllowedUnit(ingredient.unit) })} language={language} t={t} />
-            <label>Quantidade<input type="number" min="0" step="0.1" value={item.qty} onChange={(event) => updateItem(index, { qty: event.target.value })} /></label>
-            <label>Unidade<UnitSelect value={item.unit || unitForStockItem(state, item.stockItemId)} onChange={(unit) => updateItem(index, { unit })} /></label>
-            <button className="secondary-button" type="button" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remover</button>
+            <label>{t("meals.displayName")}<input value={item.name || item.label || ""} onChange={(event) => updateItem(index, { name: event.target.value })} /></label>
+            <IngredientAutocomplete state={state} value={item.stockItemId} onChange={(id, ingredient) => updateItem(index, { stockItemId: id, name: labelForIngredient(state, id, language), unit: normalizeAllowedUnit(ingredient.unit) })} language={language} t={t} />
+            <label>{t("common.quantity")}<input type="number" min="0" step="0.1" value={item.qty} onChange={(event) => updateItem(index, { qty: event.target.value })} /></label>
+            <label>{t("common.unit")}<UnitSelect value={item.unit || unitForStockItem(state, item.stockItemId)} onChange={(unit) => updateItem(index, { unit })} /></label>
+            <button className="secondary-button" type="button" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>{t("common.remove")}</button>
           </div>
         ))}
-        {!items.length && <p className="empty-state">Nenhum item para registrar.</p>}
-        <button className="secondary-button" type="button" onClick={() => setItems((current) => [...current, { stockItemId: "", name: "", qty: "", unit: "g" }])}>Adicionar ingrediente</button>
+        {!items.length && <p className="empty-state">{t("meals.noItems")}</p>}
+        <button className="secondary-button" type="button" onClick={() => setItems((current) => [...current, { stockItemId: "", name: "", qty: "", unit: "g" }])}>{t("common.addIngredient")}</button>
       </div>
       <footer>
-        <button className="secondary-button" type="button" onClick={onClose}>Cancelar</button>
+        <button className="secondary-button" type="button" onClick={onClose}>{t("common.cancel")}</button>
         <button type="button" onClick={() => {
           if (!activeItems.length || activeItems.length !== items.length) {
-            notify("Informe ingredientes válidos e quantidades maiores que zero.");
+            notify(t("meals.invalidItems"));
             return;
           }
           const parsedDate = new Date(completedAt);
           if (Number.isNaN(parsedDate.getTime())) {
-            notify("Informe um horário válido.");
+            notify(t("common.validTime"));
             return;
           }
           dispatch({ type: "meal/complete", mealId, option, completedAt: parsedDate.toISOString(), items: activeItems });
-          notify("Consumo registrado.");
+          notify(t("meals.consumeSaved"));
           onClose();
-        }}>Confirmar consumo</button>
-      </footer>
-    </Modal>
-  );
-}
-
-function ConsumeMealModal({ state, mealId, option, onClose, dispatch, notify }) {
-  const meal = getMeals(state).find((current) => current.id === mealId);
-  const [completedAt, setCompletedAt] = useState(() => toDateTimeLocal(new Date()));
-  const [items, setItems] = useState(() => (meal?.options?.[option] || []).map((item) => ({
-    ...item,
-    name: labelForStockItem(state, item.stockItemId),
-    unit: item.unit || unitForStockItem(state, item.stockItemId),
-    qty: Math.max(0, Number(item.qty || 0)),
-  })));
-
-  if (!meal) return null;
-
-  const updateItem = (index, patch) => {
-    setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
-  };
-  const activeItems = items.filter((item) => item.stockItemId && Number(item.qty) > 0);
-
-  return (
-    <Modal title="Confirmar consumo" onClose={onClose}>
-      <div className="modal-grid">
-        <label>
-          Refeição
-          <input value={`${meal.title} - Opção ${option}`} readOnly />
-        </label>
-        <label>
-          Horário real
-          <input type="datetime-local" value={completedAt} onChange={(event) => setCompletedAt(event.target.value)} />
-        </label>
-      </div>
-      <div className="ingredient-editor-list">
-        {items.map((item, index) => (
-          <div className="ingredient-editor-row" key={`${item.stockItemId}-${index}`}>
-            <label>
-              Ingrediente
-              <input value={item.label || item.name || labelForStockItem(state, item.stockItemId)} readOnly />
-            </label>
-            <label>
-              Quantidade
-              <input type="number" min="0" step="0.1" value={item.qty} onChange={(event) => updateItem(index, { qty: Math.max(0, Number(event.target.value || 0)) })} />
-            </label>
-            <label>
-              Unidade
-              <input value={item.unit || unitForStockItem(state, item.stockItemId)} readOnly />
-            </label>
-            <button className="secondary-button" type="button" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remover</button>
-          </div>
-        ))}
-        {!items.length && <p className="empty-state">Nenhum item para registrar.</p>}
-      </div>
-      <footer>
-        <button className="secondary-button" type="button" onClick={onClose}>Cancelar</button>
-        <button type="button" onClick={() => {
-          if (!activeItems.length) {
-            notify("Informe pelo menos um item com quantidade maior que zero.");
-            return;
-          }
-          const parsedDate = new Date(completedAt);
-          if (Number.isNaN(parsedDate.getTime())) {
-            notify("Informe um horário válido.");
-            return;
-          }
-          dispatch({ type: "meal/complete", mealId, option, completedAt: parsedDate.toISOString(), items: activeItems });
-          notify("Consumo registrado.");
-          onClose();
-        }}>Confirmar consumo</button>
+        }}>{t("meals.confirmConsume")}</button>
       </footer>
     </Modal>
   );
