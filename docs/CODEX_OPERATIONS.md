@@ -191,3 +191,16 @@ Sempre responder com:
 - Project Firebase usado, se aplicável.
 - Se tocou ou não em dados.
 - Pendências/riscos.
+
+
+
+Para instalar dependências das Firebase Functions neste projeto, entre na pasta functions e rode npm.cmd install:
+
+cd functions
+npm.cmd install
+cd ..
+
+Não usar npm.cmd --prefix functions install neste workspace. Neste ambiente Windows, esse comando reintroduziu a dependência local joao-diet-training-app como file:.., acoplando functions ao app React/Vite e quebrando o Firebase Functions discovery.
+
+
+Para deploy de Functions, não usar NODE_OPTIONS com tools/firebase-gaxios-token-patch.cjs. Esse patch interfere no discovery HTTP local do Firebase CLI.

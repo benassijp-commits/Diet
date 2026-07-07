@@ -1446,6 +1446,7 @@ input {
 
 .toast {
   position: fixed;
+  z-index: 20000;
   right: 18px;
   bottom: 18px;
   max-width: min(420px, calc(100vw - 36px));
@@ -1500,6 +1501,19 @@ input {
 }
 
 @media (max-width: 600px) {
+  .toast {
+    top: calc(12px + env(safe-area-inset-top));
+    right: 12px;
+    bottom: auto;
+    left: 12px;
+    max-width: none;
+    transform: translateY(-120px);
+  }
+
+  .toast.show {
+    transform: translateY(0);
+  }
+
   .main-content,
   .sidebar {
     padding: 16px;

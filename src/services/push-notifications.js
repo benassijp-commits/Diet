@@ -8,14 +8,29 @@ const FCM_SERVICE_WORKER_SCOPE = "/firebase-cloud-messaging-push-scope/";
 
 let foregroundUnsubscribe = null;
 
+const STATUS_MESSAGES = {
+  unsupported: "Este navegador nao suporta notificacoes.",
+  "insecure-context": "As notificacoes e instalacao do app precisam de HTTPS ou localhost. Em celular, IP local HTTP nao funciona.",
+  "service-worker-unsupported": "Este navegador nao suporta service workers.",
+  denied: "Permissao de notificacoes negada no navegador.",
+  "missing-vapid": "Chave publica VAPID ausente.",
+  "signed-out": "Entre com Google para ativar notificacoes.",
+  ready: "Pronto para ativar notificacoes.",
+  enabled: "Notificacoes ativadas.",
+  "permission-dismissed": "Permissao de notificacoes nao foi concedida.",
+  "no-token": "Nao foi possivel gerar o token de notificacoes.",
+  "setup-failed": "Nao foi possivel configurar notificacoes.",
+};
+
 export function getPushEnvironmentStatus() {
-  if (typeof window === "undefined") return { ok: false, code: "unsupported", message: "Este navegador nao suporta notificacoes." };
-  if (!("Notification" in window)) return { ok: false, code: "unsupported", message: "Este navegador nao suporta notificacoes." };
-  if (!("serviceWorker" in navigator)) return { ok: false, code: "unsupported", message: "Este navegador nao suporta service workers." };
-  if (Notification.permission === "denied") return { ok: false, code: "denied", message: "Permissao de notificacoes negada no navegador." };
-  if (!import.meta.env.VITE_FIREBASE_VAPID_KEY) return { ok: false, code: "missing-vapid", message: "Chave publica VAPID ausente." };
-  if (!getCurrentUser()) return { ok: false, code: "signed-out", message: "Entre com Google para ativar notificacoes." };
-  return { ok: true, code: Notification.permission, message: Notification.permission === "granted" ? "Notificacoes ativadas." : "Pronto para ativar notificacoes." };
+  if (typeof window === "undefined") return pushStatus(false, "unsupported");
+  if (window.isSecureContext === false) return pushStatus(false, "insecure-context");
+  if (!("Notification" in window)) return pushStatus(false, "unsupported");
+  if (!("serviceWorker" in navigator)) return pushStatus(false, "service-worker-unsupported");
+  if (Notification.permission === "denied") return pushStatus(false, "denied");
+  if (!import.meta.env.VITE_FIREBASE_VAPID_KEY) return pushStatus(false, "missing-vapid");
+  if (!getCurrentUser()) return pushStatus(false, "signed-out");
+  return pushStatus(true, Notification.permission === "granted" ? "enabled" : "ready");
 }
 
 export async function enablePushNotifications() {
@@ -23,28 +38,47 @@ export async function enablePushNotifications() {
   if (!environment.ok) return environment;
 
   const supported = await isSupported();
-  if (!supported) return { ok: false, code: "unsupported", message: "Firebase Messaging nao e suportado neste navegador." };
+  if (!supported) return pushStatus(false, "unsupported");
 
   const permission = await Notification.requestPermission();
-  if (permission === "denied") return { ok: false, code: "denied", message: "Permissao de notificacoes negada no navegador." };
-  if (permission !== "granted") return { ok: false, code: permission, message: "Permissao de notificacoes nao foi concedida." };
+  if (permission === "denied") return pushStatus(false, "denied");
+  if (permission !== "granted") return pushStatus(false, "permission-dismissed");
 
-  const registration = await navigator.serviceWorker.register(FCM_SERVICE_WORKER_URL, {
-    scope: FCM_SERVICE_WORKER_SCOPE,
-  });
-  const worker = await waitForServiceWorkerActivation(registration);
-  worker?.postMessage({ type: "FIREBASE_CONFIG", config: publicFirebaseConfig });
+  let registration;
+  try {
+    registration = await navigator.serviceWorker.register(FCM_SERVICE_WORKER_URL, {
+      scope: FCM_SERVICE_WORKER_SCOPE,
+    });
+    const worker = await waitForServiceWorkerActivation(registration);
+    worker?.postMessage({ type: "FIREBASE_CONFIG", config: publicFirebaseConfig });
+  } catch (error) {
+    console.error(error);
+    return pushStatus(false, "setup-failed");
+  }
 
   const messaging = getMessaging(app);
-  const token = await getToken(messaging, {
-    vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
-    serviceWorkerRegistration: registration,
-  });
+  let token;
+  try {
+    token = await getToken(messaging, {
+      vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
+      serviceWorkerRegistration: registration,
+    });
+  } catch (error) {
+    console.error(error);
+    return pushStatus(false, "no-token");
+  }
 
-  if (!token) return { ok: false, code: "no-token", message: "Nao foi possivel gerar o token de notificacoes." };
+  if (!token) return pushStatus(false, "no-token");
 
   await saveNotificationToken(token);
-  return { ok: true, code: "enabled", message: "Notificacoes ativadas.", token };
+  return { ...pushStatus(true, "enabled"), token };
+}
+
+export function pushStatusMessage(status, t) {
+  if (!status) return "";
+  const key = `notifications.${status.code}`;
+  const translated = t?.(key);
+  return translated && translated !== key ? translated : status.message;
 }
 
 export async function listenForForegroundMessages(onNotification) {
@@ -88,4 +122,12 @@ function waitForServiceWorkerActivation(registration) {
       if (worker.state === "activated") resolve(worker);
     });
   });
+}
+
+function pushStatus(ok, code) {
+  return {
+    ok,
+    code,
+    message: STATUS_MESSAGES[code] || STATUS_MESSAGES["setup-failed"],
+  };
 }
