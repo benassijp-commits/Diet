@@ -104,6 +104,9 @@ export function persistState(state) {
 export function getCloudState(state) {
   const cloudState = clone(state);
   for (const key of LOCAL_UI_STATE_KEYS) delete cloudState[key];
+  cloudState.stockItems = Object.fromEntries(
+    Object.entries(cloudState.stockItems || {}).filter(([id]) => !BASE_INGREDIENT_CATALOG_IDS.has(id)),
+  );
   return cloudState;
 }
 

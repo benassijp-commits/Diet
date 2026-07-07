@@ -12,7 +12,8 @@ export const DAILY_TARGETS = {
 export const AI_SETTINGS_KEY = "joao-diet-ai-settings-v1";
 
 export const DEFAULT_AI_SETTINGS = {
-  provider: "nanogpt",
-  baseUrl: "https://nano-gpt.com/api/v1",
-  model: "deepseek/deepseek-chat",
+  mode: "proxy",
+  provider: "firebase-functions",
+  baseUrl: "",
+  model: "deepseek/deepseek-latest",
 };

@@ -22,6 +22,8 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
+export { app, db };
+
 let currentUser = null;
 let unsubscribeState = null;
 

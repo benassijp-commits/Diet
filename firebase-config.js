@@ -7,6 +7,10 @@ export const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+export const publicFirebaseConfig = Object.fromEntries(
+  Object.entries(firebaseConfig).filter(([, value]) => Boolean(value)),
+);
+
 const missingFirebaseConfig = Object.entries(firebaseConfig)
   .filter(([, value]) => !value)
   .map(([key]) => key);

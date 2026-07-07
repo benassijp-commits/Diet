@@ -1,4 +1,5 @@
 import { chatJson } from "./ai-client.js";
+import { canUseAi } from "./ai-settings.js";
 import { normalizeText } from "./utils.js";
 
 let nutritionBase = null;
@@ -189,7 +190,7 @@ function ingredientMatchCandidates(items, name, limit = 160) {
 }
 
 async function findIngredientNameMatchWithAi(items, name, aiSettings) {
-  if (!aiSettings?.apiKey) return null;
+  if (!canUseAi(aiSettings)) return null;
 
   const candidates = ingredientMatchCandidates(items, name);
   if (!candidates.length) return null;
@@ -261,7 +262,7 @@ async function findIngredientNameMatchWithAi(items, name, aiSettings) {
 
 export async function findIngredientNameMatch(items, name, aiSettings) {
   const local = findIngredientNameMatchLocal(items, name);
-  if (local || !aiSettings?.apiKey) return local;
+  if (local || !canUseAi(aiSettings)) return local;
   try {
     return await findIngredientNameMatchWithAi(items, name, aiSettings);
   } catch (error) {
@@ -289,7 +290,7 @@ export async function resolveIngredientNutrition({ name, unit, aiSettings }) {
     };
   }
 
-  if (!aiSettings?.apiKey) {
+  if (!canUseAi(aiSettings)) {
     return { nutrition, nutritionSource, matchedLocal: null, sourceType: "empty" };
   }
 

@@ -1446,6 +1446,7 @@ input {
 
 .toast {
   position: fixed;
+  z-index: 20000;
   right: 18px;
   bottom: 18px;
   max-width: min(420px, calc(100vw - 36px));
@@ -1500,6 +1501,19 @@ input {
 }
 
 @media (max-width: 600px) {
+  .toast {
+    top: calc(12px + env(safe-area-inset-top));
+    right: 12px;
+    bottom: auto;
+    left: 12px;
+    max-width: none;
+    transform: translateY(-120px);
+  }
+
+  .toast.show {
+    transform: translateY(0);
+  }
+
   .main-content,
   .sidebar {
     padding: 16px;
@@ -2248,6 +2262,32 @@ tbody tr:hover td {
 
 .stock-editor-grid button {
   min-width: 0;
+}
+
+.settings-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.install-app-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.install-help-modal {
+  max-width: 440px;
+}
+
+.install-help-list {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 1rem 1rem 1rem 2rem;
+  color: var(--ink);
 }
 
 label {
