@@ -4,6 +4,7 @@
 
 # Firebase local/cache output
 .firebase/
+data/backups/
 
 # Local agent/cache folders
 .agents/
@@ -17,6 +18,7 @@ diff-ultimo-commit.txt
 node_modules/
 dist/
 build/
+.vite/
 
 # Logs and OS files
 *.log
@@ -25,4 +27,8 @@ Thumbs.db
 
 # Local environment files
 .env
-.env.*
+.env.local
+.env.*.local
+
+!.env.development
+!.env.production

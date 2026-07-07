@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "dieta-e6bee"
+    "default": "dieta-e6bee-dev",
+    "dev": "dieta-e6bee-dev",
+    "prod": "dieta-e6bee"
   }
 }

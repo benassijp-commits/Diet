@@ -1,8 +1,16 @@
 export const firebaseConfig = {
-  apiKey: "AIzaSyBupIctCA8gEdsTrsPqxAW6gOrcitULUzc",
-  authDomain: "dieta-e6bee.firebaseapp.com",
-  projectId: "dieta-e6bee",
-  storageBucket: "dieta-e6bee.firebasestorage.app",
-  messagingSenderId: "71054942173",
-  appId: "1:71054942173:web:a46e9135254ab6981ea034",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
+
+const missingFirebaseConfig = Object.entries(firebaseConfig)
+  .filter(([, value]) => !value)
+  .map(([key]) => key);
+
+if (missingFirebaseConfig.length) {
+  console.error(`Missing Firebase config fields: ${missingFirebaseConfig.join(", ")}`);
+}

@@ -78,8 +78,7 @@ function userStateDoc(uid) {
 }
 
 function stateDocumentId() {
-  const host = window.location.hostname;
-  return host === "localhost" || host === "127.0.0.1" ? "current-dev" : "current";
+  return "current";
 }
 
 getRedirectResult(auth).catch((error) => {
