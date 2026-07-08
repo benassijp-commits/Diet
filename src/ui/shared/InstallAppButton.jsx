@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { getInstallPromptSnapshot, promptInstallApp, subscribeInstallPrompt } from "../../pwa-install-prompt.js";
 
 function isStandaloneMode() {
   return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
@@ -63,7 +64,7 @@ async function detectBraveBrowser() {
 }
 
 export default function InstallAppButton({ t }) {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [installPrompt, setInstallPrompt] = useState(() => getInstallPromptSnapshot());
   const [standalone, setStandalone] = useState(() => isStandaloneMode());
   const [showAndroidHelp, setShowAndroidHelp] = useState(false);
   const [showIosHelp, setShowIosHelp] = useState(false);
@@ -78,41 +79,35 @@ export default function InstallAppButton({ t }) {
     ios: isIosDevice(),
   }), []);
   const secureContext = useMemo(() => isSecureAppContext(), []);
+  const hasDeferredPrompt = installPrompt.hasDeferredPrompt;
 
   useEffect(() => {
-    const installPromptHandler = (event) => {
-      event.preventDefault();
-      setDeferredPrompt(event);
-      setDismissed(false);
-    };
-    const appInstalledHandler = () => {
-      setStandalone(true);
-      setDeferredPrompt(null);
-    };
     const displayMode = window.matchMedia?.("(display-mode: standalone)");
     const displayModeHandler = (event) => setStandalone(event.matches || isStandaloneMode());
 
-    window.addEventListener("beforeinstallprompt", installPromptHandler);
-    window.addEventListener("appinstalled", appInstalledHandler);
     displayMode?.addEventListener?.("change", displayModeHandler);
 
     return () => {
-      window.removeEventListener("beforeinstallprompt", installPromptHandler);
-      window.removeEventListener("appinstalled", appInstalledHandler);
       displayMode?.removeEventListener?.("change", displayModeHandler);
     };
   }, []);
 
+  useEffect(() => subscribeInstallPrompt((nextInstallPrompt) => {
+    setInstallPrompt(nextInstallPrompt);
+    if (nextInstallPrompt.hasDeferredPrompt) setDismissed(false);
+    if (nextInstallPrompt.installed) setStandalone(true);
+  }), []);
+
   useEffect(() => {
     let active = true;
-    readInstallDiagnostics({ standalone, hasDeferredPrompt: Boolean(deferredPrompt) })
+    readInstallDiagnostics({ standalone, hasDeferredPrompt })
       .then((nextDiagnostics) => {
         if (active) setDiagnostics(nextDiagnostics);
       });
     return () => {
       active = false;
     };
-  }, [deferredPrompt, standalone]);
+  }, [hasDeferredPrompt, standalone]);
 
   useEffect(() => {
     let active = true;
@@ -127,15 +122,13 @@ export default function InstallAppButton({ t }) {
   if (standalone || dismissed) return null;
 
   const installWithPrompt = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const choice = await deferredPrompt.userChoice;
-    setDeferredPrompt(null);
-    if (choice.outcome === "accepted") setStandalone(true);
+    if (!hasDeferredPrompt) return;
+    const choice = await promptInstallApp();
+    if (choice?.outcome === "accepted") setStandalone(true);
   };
 
   const openAndroidInstall = () => {
-    if (deferredPrompt) {
+    if (hasDeferredPrompt) {
       installWithPrompt();
       return;
     }
@@ -144,7 +137,7 @@ export default function InstallAppButton({ t }) {
 
   const renderDiagnostics = () => (
     <div className="install-diagnostics" aria-live="polite">
-      {device.android && isBrave && !deferredPrompt && (
+      {device.android && isBrave && !hasDeferredPrompt && (
         <p className="install-brave-note">{t("install.braveAndroidManual")}</p>
       )}
       <dl>
@@ -205,7 +198,7 @@ export default function InstallAppButton({ t }) {
     return (
       <div className="install-app-card">
         <button type="button" onClick={() => setShowIosHelp(true)}>{t("install.iosButton")}</button>
-        {!deferredPrompt && renderDiagnostics()}
+        {!hasDeferredPrompt && renderDiagnostics()}
         {showIosHelp && renderInstallHelpModal({
           title: t("install.iosTitle"),
           steps: [
@@ -240,8 +233,8 @@ export default function InstallAppButton({ t }) {
     return (
       <div className="install-app-card">
         <button type="button" onClick={openAndroidInstall}>{t("install.androidButton")}</button>
-        {!deferredPrompt && <p className="settings-help">{t("install.promptUnavailable")}</p>}
-        {!deferredPrompt && renderDiagnostics()}
+        {!hasDeferredPrompt && <p className="settings-help">{t("install.promptUnavailable")}</p>}
+        {!hasDeferredPrompt && renderDiagnostics()}
         {showAndroidHelp && renderInstallHelpModal({
           title: t("install.androidTitle"),
           steps: androidSteps,
@@ -251,7 +244,7 @@ export default function InstallAppButton({ t }) {
     );
   }
 
-  if (deferredPrompt) {
+  if (hasDeferredPrompt) {
     return (
       <div className="install-app-card">
         <button type="button" onClick={installWithPrompt}>{t("install.button")}</button>

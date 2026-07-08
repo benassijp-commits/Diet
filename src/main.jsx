@@ -1,5 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
+import "./pwa-install-prompt.js";
 import App from "./ui/App.jsx";
 import "../styles.css";
 
