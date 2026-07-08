@@ -34,6 +34,7 @@ export default function MealsTab({ state, dispatch, notify, language = "pt", t }
   const missingNutrition = currentDietMissingNutritionItems(state, language);
   const mealBeingEdited = editingMeal ? meals.find((meal) => meal.id === editingMeal.mealId) : null;
   const locale = language === "en" ? "en-US" : "pt-BR";
+  const nextMealReminderAt = state.mealReminder?.nextMealReminderAt;
 
   return (
     <section className="tab-panel active">
@@ -73,6 +74,12 @@ export default function MealsTab({ state, dispatch, notify, language = "pt", t }
                 />
               </label>
               <p>{t("meals.timingHelp")}</p>
+              <p>
+                {nextMealReminderAt
+                  ? t("meals.nextMealReminder", { time: formatReminderTime(nextMealReminderAt, locale) })
+                  : t("meals.noMealReminder")}
+              </p>
+              <p>{t("notifications.localMealReminderHelp")}</p>
             </div>
           </section>
         </aside>
@@ -262,4 +269,10 @@ function UnitSelect({ value, onChange }) {
 function toDateTimeLocal(date) {
   const offsetMs = date.getTimezoneOffset() * 60000;
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function formatReminderTime(value, locale) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString(locale, { dateStyle: "short", timeStyle: "short" });
 }

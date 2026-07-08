@@ -81,6 +81,11 @@ export const initialState = {
   dietTiming: {
     minHoursBetweenMeals: 3,
   },
+  mealReminder: {
+    nextMealReminderAt: "",
+    lastMealReminderBaseMealId: "",
+    lastMealReminderNotifiedAt: "",
+  },
   workoutPlans: [],
   activeWorkoutPlanId: "",
   workoutLogs: [],
@@ -137,6 +142,10 @@ export function migrateState(rawState) {
     appSettings: {
       ...clone(initialState.appSettings),
       ...(rawState.appSettings || {}),
+      notificationTypes: {
+        ...clone(initialState.appSettings.notificationTypes),
+        ...(rawState.appSettings?.notificationTypes || {}),
+      },
       language: rawState.appSettings?.language === "en" ? "en" : "pt",
     },
     dailyLogs: rawState.dailyLogs || {},
@@ -144,6 +153,7 @@ export function migrateState(rawState) {
       ...clone(initialState.dietTiming),
       ...(rawState.dietTiming || {}),
     },
+    mealReminder: normalizeMealReminder(rawState.mealReminder),
     workoutPlans: Array.isArray(rawState.workoutPlans) ? rawState.workoutPlans : [],
     activeWorkoutPlanId: rawState.activeWorkoutPlanId || "",
     workoutLogs: Array.isArray(rawState.workoutLogs) ? rawState.workoutLogs : [],
@@ -188,9 +198,15 @@ export function reducer(state, action) {
       return next;
     case "day/reset":
       next.dailyLogs[todayKey()] = { water: 0, completedMeals: {} };
+      clearMealReminder(next);
       return next;
     case "diet-timing/update":
       next.dietTiming = { minHoursBetweenMeals: Number(action.minHoursBetweenMeals || 3) };
+      recalculateMealReminderFromLatestMeal(next);
+      return next;
+    case "meal-reminder/notified":
+      if (next.mealReminder?.nextMealReminderAt !== action.nextMealReminderAt) return next;
+      next.mealReminder.lastMealReminderNotifiedAt = action.notifiedAt || new Date().toISOString();
       return next;
     case "meal/toggle-collapse":
       next.collapsedMeals[action.mealId] = !next.collapsedMeals[action.mealId];
@@ -204,6 +220,7 @@ export function reducer(state, action) {
       next.meals = next.meals.filter((meal) => meal.id !== action.mealId);
       delete next.selections[action.mealId];
       delete next.shoppingCart[action.mealId];
+      if (next.mealReminder?.lastMealReminderBaseMealId === action.mealId) recalculateMealReminderFromLatestMeal(next);
       return next;
     case "meal/update":
       next.meals = next.meals.map((meal) => meal.id === action.meal.id ? action.meal : meal);
@@ -217,6 +234,7 @@ export function reducer(state, action) {
       return next;
     case "meal/undo":
       undoMeal(next, action.mealId);
+      recalculateMealReminderFromLatestMeal(next);
       return next;
     case "cart/add":
       addSelectedMealToCart(next, action.mealId);
@@ -238,6 +256,21 @@ export function reducer(state, action) {
       return next;
     case "settings/language":
       next.appSettings.language = action.language === "en" ? "en" : "pt";
+      return next;
+    case "settings/notifications-enabled":
+      next.appSettings.notificationsEnabled = Boolean(action.value);
+      if (!next.appSettings.notificationsEnabled) clearMealReminder(next);
+      return next;
+    case "settings/notification-type":
+      next.appSettings.notificationTypes = {
+        ...clone(initialState.appSettings.notificationTypes),
+        ...(next.appSettings.notificationTypes || {}),
+        [action.notificationType]: Boolean(action.value),
+      };
+      if (action.notificationType === "mealReminders") {
+        if (action.value) recalculateMealReminderFromLatestMeal(next);
+        else clearMealReminder(next);
+      }
       return next;
     case "log/clear":
       next.log = [];
@@ -776,6 +809,7 @@ function completeMeal(next, action) {
   const alert = timingAlert(next, mealId, completedAt);
 
   currentDayLog(next).completedMeals[mealId] = { option: selected, completedAt, items: ingredients, stockChanged: Boolean(next.stockManagementEnabled) };
+  scheduleNextMealReminder(next, mealId, completedAt);
   next.log.push({
     date: timestamp(),
     isoDate: completedAt,
@@ -784,6 +818,67 @@ function completeMeal(next, action) {
     items: ingredients,
     alert,
   });
+}
+
+function normalizeMealReminder(reminder = {}) {
+  const nextMealReminderAt = validIso(reminder.nextMealReminderAt) ? reminder.nextMealReminderAt : "";
+  const lastMealReminderNotifiedAt = validIso(reminder.lastMealReminderNotifiedAt) ? reminder.lastMealReminderNotifiedAt : "";
+  return {
+    nextMealReminderAt,
+    lastMealReminderBaseMealId: nextMealReminderAt ? String(reminder.lastMealReminderBaseMealId || "") : "",
+    lastMealReminderNotifiedAt,
+  };
+}
+
+function scheduleNextMealReminder(next, mealId, completedAt) {
+  if (!mealReminderSettingsEnabled(next) || !validIso(completedAt)) {
+    clearMealReminder(next);
+    return;
+  }
+  const minHoursBetweenMeals = Math.max(0, Number(next.dietTiming?.minHoursBetweenMeals || 3));
+  const nextMealReminderAt = new Date(new Date(completedAt).getTime() + minHoursBetweenMeals * 36e5).toISOString();
+  const previousReminder = next.mealReminder || {};
+  const alreadyNotifiedAt = previousReminder.nextMealReminderAt === nextMealReminderAt && previousReminder.lastMealReminderBaseMealId === mealId
+    ? previousReminder.lastMealReminderNotifiedAt || ""
+    : "";
+  next.mealReminder = {
+    nextMealReminderAt,
+    lastMealReminderBaseMealId: mealId,
+    lastMealReminderNotifiedAt: alreadyNotifiedAt,
+  };
+}
+
+function recalculateMealReminderFromLatestMeal(next) {
+  if (!mealReminderSettingsEnabled(next)) {
+    clearMealReminder(next);
+    return;
+  }
+  const latest = latestCompletedMeal(next);
+  if (!latest) {
+    clearMealReminder(next);
+    return;
+  }
+  scheduleNextMealReminder(next, latest.mealId, latest.completedAt);
+}
+
+function latestCompletedMeal(state) {
+  const completed = currentDayLog(state).completedMeals || {};
+  return Object.entries(completed)
+    .filter(([, record]) => validIso(record?.completedAt))
+    .map(([mealId, record]) => ({ mealId, completedAt: record.completedAt }))
+    .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt))[0] || null;
+}
+
+function mealReminderSettingsEnabled(state) {
+  return Boolean(state.appSettings?.notificationsEnabled && state.appSettings?.notificationTypes?.mealReminders);
+}
+
+function clearMealReminder(next) {
+  next.mealReminder = clone(initialState.mealReminder);
+}
+
+function validIso(value) {
+  return Boolean(value && !Number.isNaN(new Date(value).getTime()));
 }
 
 function timingAlert(state, mealId, completedAt) {

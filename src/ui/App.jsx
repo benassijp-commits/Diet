@@ -39,6 +39,44 @@ export default function App() {
     notify.timer = window.setTimeout(() => setToast(""), 2400);
   };
 
+  useEffect(() => {
+    const reminder = state.mealReminder;
+    const nextMealReminderAt = reminder?.nextMealReminderAt;
+    if (!state.appSettings?.notificationsEnabled || !state.appSettings?.notificationTypes?.mealReminders) return;
+    if (!nextMealReminderAt || reminder?.lastMealReminderNotifiedAt) return;
+
+    const targetTime = new Date(nextMealReminderAt).getTime();
+    if (Number.isNaN(targetTime)) return;
+
+    const delay = Math.max(0, targetTime - Date.now());
+    const timer = window.setTimeout(() => {
+      const title = t("notifications.mealReminderTitle");
+      const message = t("notifications.mealReminderBody");
+      let shownNotification = false;
+
+      if ("Notification" in window && Notification.permission === "granted") {
+        try {
+          new Notification(title, { body: message, tag: "meal-reminder" });
+          shownNotification = true;
+        } catch (error) {
+          console.warn("Local meal reminder notification failed", error);
+        }
+      }
+
+      notify(shownNotification ? `${title}: ${message}` : message);
+      dispatch({ type: "meal-reminder/notified", nextMealReminderAt, notifiedAt: new Date().toISOString() });
+    }, Math.min(delay, 2147483647));
+
+    return () => window.clearTimeout(timer);
+  }, [
+    dispatch,
+    state.appSettings?.notificationTypes?.mealReminders,
+    state.appSettings?.notificationsEnabled,
+    state.mealReminder?.lastMealReminderNotifiedAt,
+    state.mealReminder?.nextMealReminderAt,
+    t,
+  ]);
+
   const currentTab = tabs.find((tab) => tab.id === activeTab) || tabs[0];
   const currentTitle = t(`tabs.${currentTab.id}`);
 

@@ -22,6 +22,7 @@ export default function SettingsTab({ state, dispatch, notify, t, language }) {
       const result = await enablePushNotifications();
       const message = pushStatusMessage(result, t);
       setNotificationStatus(message);
+      dispatch({ type: "settings/notifications-enabled", value: result.ok && result.code === "enabled" });
       notify(message);
     } catch (error) {
       console.error(error);
@@ -54,6 +55,15 @@ export default function SettingsTab({ state, dispatch, notify, t, language }) {
             <button type="button" onClick={handleEnableNotifications} disabled={isEnablingNotifications}>
               {isEnablingNotifications ? t("notifications.enabling") : t("notifications.enable")}
             </button>
+            <label className="toggle-control">
+              <input
+                type="checkbox"
+                checked={Boolean(state.appSettings?.notificationTypes?.mealReminders)}
+                onChange={(event) => dispatch({ type: "settings/notification-type", notificationType: "mealReminders", value: event.target.checked })}
+              />
+              {t("notifications.mealReminders")}
+            </label>
+            <p className="settings-help">{t("notifications.localMealReminderHelp")}</p>
           </div>
         </section>
 

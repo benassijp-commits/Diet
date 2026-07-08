@@ -30,8 +30,22 @@ Formato:
   log: LogEntry[],
   shoppingCart: Record<mealId, Record<optionKey, number>>,
   stockManagementEnabled: boolean,
+  appSettings: {
+    notificationsEnabled: boolean,
+    notificationTypes: {
+      mealReminders: boolean,
+      stockAlerts: boolean,
+      cartAlerts: boolean
+    },
+    language: "pt" | "en"
+  },
   dietTiming: {
     minHoursBetweenMeals: number
+  },
+  mealReminder: {
+    nextMealReminderAt: string,
+    lastMealReminderBaseMealId: string,
+    lastMealReminderNotifiedAt: string
   },
   workoutPlans: WorkoutPlan[],
   activeWorkoutPlanId: string,
