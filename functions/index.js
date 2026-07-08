@@ -169,6 +169,9 @@ export const processScheduledNotifications = onSchedule("every 1 minutes", async
     try {
       const targetToken = String(notification.targetToken || "").trim();
       const targetTokenId = String(notification.targetTokenId || "").trim();
+      const title = String(notification.title || "Lembrete");
+      const body = String(notification.body || "");
+      const dedupeKey = String(notification.dedupeKey || "");
       const tokens = targetToken
         ? [{ ref: targetTokenId ? firestore.collection("users").doc(uid).collection("notificationTokens").doc(targetTokenId) : null, token: targetToken }]
         : await getEnabledNotificationTokens(uid);
@@ -182,13 +185,15 @@ export const processScheduledNotifications = onSchedule("every 1 minutes", async
       const response = await messaging.sendEachForMulticast({
         tokens: tokens.map((item) => item.token),
         notification: {
-          title: String(notification.title || "Lembrete"),
-          body: String(notification.body || ""),
+          title,
+          body,
         },
         data: {
           type,
           notificationId: notificationDoc.id,
-          dedupeKey: String(notification.dedupeKey || ""),
+          dedupeKey,
+          title,
+          body,
         },
         android: {
           priority: "high",
@@ -198,7 +203,11 @@ export const processScheduledNotifications = onSchedule("every 1 minutes", async
         },
         webpush: {
           notification: {
-            tag: String(notification.dedupeKey || notificationDoc.id),
+            title,
+            body,
+            icon: "/icons/icon-192.png",
+            badge: "/icons/icon-192.png",
+            tag: dedupeKey || notificationDoc.id,
             renotify: true,
           },
         },
