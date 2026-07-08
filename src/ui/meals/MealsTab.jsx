@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Clock3, FilePlus, Plus, RotateCcw, Sparkles, Utensils } from "lucide-react";
 import {
   allIngredientCatalogItems,
+  currentDietMissingNutritionItems,
   currentDayLog,
   currentDietTargets,
   currentNutritionTotals,
@@ -30,6 +31,7 @@ export default function MealsTab({ state, dispatch, notify, language = "pt", t }
   const targets = currentDietTargets(state);
   const dayLog = currentDayLog(state);
   const meals = getMeals(state);
+  const missingNutrition = currentDietMissingNutritionItems(state, language);
   const mealBeingEdited = editingMeal ? meals.find((meal) => meal.id === editingMeal.mealId) : null;
   const locale = language === "en" ? "en-US" : "pt-BR";
 
@@ -43,6 +45,11 @@ export default function MealsTab({ state, dispatch, notify, language = "pt", t }
             <Metric label={t("meals.protein")} value={`${formatQty(totals.protein)} / ${formatQty(targets.protein)} g`} />
             <Metric label={t("meals.carbs")} value={`${formatQty(totals.carbs)} / ${formatQty(targets.carbs)} g`} />
             <Metric label={t("meals.fat")} value={`${formatQty(totals.fat)} / ${formatQty(targets.fat)} g`} />
+            {!!missingNutrition.length && (
+              <div className="purchase-warnings" role="status">
+                {t("meals.missingNutritionWarning", { count: missingNutrition.length })}
+              </div>
+            )}
             <div className="water-control">
               <span className="water-label">{t("app.water")}</span>
               <div>

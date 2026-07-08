@@ -362,6 +362,26 @@ export function optionNutritionTotals(state, meal, option) {
   return totals;
 }
 
+export function optionMissingNutritionItems(state, meal, option, language = "pt") {
+  return (meal.options?.[option] || [])
+    .filter((item) => item.needsReview || isIngredientNutritionMissing(state.stockItems[item.stockItemId]))
+    .map((item) => ({
+      ...item,
+      name: item.label || labelForIngredient(state, item.stockItemId, language),
+    }));
+}
+
+export function currentDietMissingNutritionItems(state, language = "pt") {
+  const missing = [];
+  for (const meal of getMeals(state)) {
+    const option = state.selections[meal.id] || getOptionKeys(meal)[0];
+    for (const item of optionMissingNutritionItems(state, meal, option, language)) {
+      missing.push({ ...item, mealId: meal.id, mealTitle: meal.title });
+    }
+  }
+  return missing;
+}
+
 export function nutritionSummary(totals) {
   return `${formatQty(totals.kcal)} kcal | ${formatQty(totals.protein)} P / ${formatQty(totals.carbs)} C / ${formatQty(totals.fat)} G`;
 }
@@ -437,6 +457,13 @@ export function unitForIngredient(state, id) {
 
 export function nutritionForIngredient(state, id) {
   return state.stockItems[id]?.nutrition || { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+}
+
+export function isIngredientNutritionMissing(item) {
+  if (!item) return true;
+  if (item.needsReview || item.nutritionStatus === "missing" || item.nutritionSource === "import_placeholder") return true;
+  const nutrition = item.nutrition || {};
+  return !["kcal", "protein", "carbs", "fat"].some((key) => Number(nutrition[key] || 0) > 0);
 }
 
 export function priceForIngredient(state, id) {

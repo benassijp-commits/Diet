@@ -3,6 +3,7 @@ import {
   getOptionKeys,
   labelForStockItem,
   nutritionSummary,
+  optionMissingNutritionItems,
   optionNutritionTotals,
 } from "../../state/app-state.js";
 import { formatQty, formatTime } from "../../utils.js";
@@ -11,6 +12,7 @@ export default function MealCard({ meal, state, completed, onEdit, onConsume, di
   const optionKeys = getOptionKeys(meal);
   const selected = optionKeys.includes(state.selections[meal.id]) ? state.selections[meal.id] : optionKeys[0];
   const totals = optionNutritionTotals(state, meal, selected);
+  const missingNutrition = optionMissingNutritionItems(state, meal, selected, language);
   const collapsed = Boolean(state.collapsedMeals?.[meal.id]);
   const CollapseIcon = collapsed ? ChevronDown : ChevronUp;
   return (
@@ -31,7 +33,7 @@ export default function MealCard({ meal, state, completed, onEdit, onConsume, di
       >
         <div>
           <h3>{meal.title}</h3>
-          <p>{meal.subtitle} | {nutritionSummary(totals)}</p>
+          <p>{meal.subtitle} | {nutritionSummary(totals)}{missingNutrition.length ? ` | ${t("meals.nutritionIncomplete")}` : ""}</p>
         </div>
         {completed && <span className="completed-pill">{t("meals.completed")} {formatTime(completed.completedAt)}</span>}
         <span className="meal-collapse-indicator"><CollapseIcon size={18} /></span>
@@ -42,6 +44,11 @@ export default function MealCard({ meal, state, completed, onEdit, onConsume, di
         ))}
       </div>
       <div className="ingredient-list">
+        {!!missingNutrition.length && (
+          <div className="purchase-warnings" role="status">
+            {t("meals.missingNutritionWarning", { count: missingNutrition.length })}
+          </div>
+        )}
         {(meal.options[selected] || []).map((ingredient, index) => (
           <div className="ingredient-row" key={`${ingredient.stockItemId}-${index}`}>
             <span>{ingredient.label || labelForStockItem(state, ingredient.stockItemId, language)}<small>{labelForStockItem(state, ingredient.stockItemId, language)}</small></span>

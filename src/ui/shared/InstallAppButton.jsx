@@ -69,13 +69,7 @@ export default function InstallAppButton({ t }) {
       installWithPrompt();
       return;
     }
-    console.info("PWA manual install fallback", {
-      isSecureContext: window.isSecureContext,
-      userAgent: window.navigator.userAgent || "",
-      standalone,
-      hasDeferredPrompt: Boolean(deferredPrompt),
-      hasServiceWorker: "serviceWorker" in navigator,
-    });
+    logInstallDiagnostics({ standalone, hasDeferredPrompt: Boolean(deferredPrompt) });
     setShowAndroidHelp(true);
   };
 
@@ -157,4 +151,23 @@ export default function InstallAppButton({ t }) {
   }
 
   return null;
+}
+
+async function logInstallDiagnostics({ standalone, hasDeferredPrompt }) {
+  const manifestHref = document.querySelector("link[rel='manifest']")?.href || "/manifest.webmanifest";
+  const serviceWorkerRegistered = "serviceWorker" in navigator
+    ? Boolean(await navigator.serviceWorker.getRegistration().catch(() => null))
+    : false;
+  const manifestAccessible = await fetch(manifestHref, { method: "HEAD" })
+    .then((response) => response.ok)
+    .catch(() => false);
+
+  console.info("PWA manual install fallback", {
+    hasInstallPrompt: hasDeferredPrompt,
+    displayMode: standalone ? "standalone" : "browser",
+    isSecureContext: window.isSecureContext,
+    userAgent: window.navigator.userAgent || "",
+    serviceWorkerRegistered,
+    manifestAccessible,
+  });
 }

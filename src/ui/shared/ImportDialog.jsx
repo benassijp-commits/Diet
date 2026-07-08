@@ -3,6 +3,7 @@ import { loadAiSettings } from "../../ai-settings.js";
 import { extractDietFileText } from "../../diet-file-text.js";
 import { importDietFromText } from "../../diet-importer.js";
 import { importWorkoutFromText } from "../../workout-importer.js";
+import { resolveIngredientMatch } from "../../ingredient-matching.js";
 import { allIngredientCatalogItems, createStockItemId } from "../../state/app-state.js";
 import Modal from "./Modal.jsx";
 
@@ -23,8 +24,15 @@ export default function ImportDialog({ title, kind, state, onClose, dispatch, no
         ? prepareImportedDiet(await importDietFromText({ text, settings }), state)
         : await importWorkoutFromText({ text, settings });
       dispatch({ type: kind === "diet" ? "diet/import" : "workout/import", imported });
-      setStatus(kind === "diet" ? t("import.dietSuccess") : t("import.workoutSuccess"));
-      notify(kind === "diet" ? t("import.dietSuccess") : t("import.workoutSuccess"));
+      if (kind === "diet" && imported.unresolvedIngredients?.length) {
+        const message = t("import.dietNeedsNutrition", { count: imported.unresolvedIngredients.length });
+        setStatus(message);
+        notify(message);
+        return;
+      }
+      const message = kind === "diet" ? t("import.dietSuccess") : t("import.workoutSuccess");
+      setStatus(message);
+      notify(message);
       onClose();
     } catch (submitError) {
       console.error(submitError);
@@ -65,21 +73,21 @@ function prepareImportedDiet(imported, state) {
   const stockItems = {};
   const createdByName = new Map();
   const existing = allIngredientCatalogItems(state);
-  const findExisting = (name) => existing.find((item) => item.name.toLowerCase() === String(name || "").toLowerCase());
+  const unresolvedIngredients = new Map();
 
   return {
     ...imported,
     stockItems,
     meals: imported.meals.map((meal) => ({
       ...meal,
-      options: Object.fromEntries(Object.entries(meal.options || {}).map(([option, items]) => [
+      options: Object.fromEntries(Object.entries(meal.options || {}).map(([option, mealItems]) => [
         option,
-        items.map((item) => {
-          const match = findExisting(item.label);
+        mealItems.map((item) => {
+          const match = resolveIngredientMatch(item.label, state, { items: existing });
           const key = String(item.label || "").toLowerCase();
-          const stockItemId = match?.id || createdByName.get(key) || createStockItemId(item.label);
-          if (!match) createdByName.set(key, stockItemId);
-          if (!match && !stockItems[stockItemId]) {
+          const stockItemId = match?.item?.id || createdByName.get(key) || createStockItemId(item.label);
+          if (!match?.item) createdByName.set(key, stockItemId);
+          if (!match?.item && !stockItems[stockItemId]) {
             stockItems[stockItemId] = {
               id: stockItemId,
               name: item.label,
@@ -88,11 +96,19 @@ function prepareImportedDiet(imported, state) {
               aliasesByLanguage: { pt: [item.label] },
               nutrition: { kcal: 0, protein: 0, carbs: 0, fat: 0 },
               nutritionSource: "import_placeholder",
+              nutritionStatus: "missing",
+              needsReview: true,
             };
+            unresolvedIngredients.set(stockItemId, item.label);
           }
-          return { ...item, stockItemId };
+          return {
+            ...item,
+            stockItemId,
+            needsReview: Boolean(match?.needsReview),
+          };
         }),
       ])),
     })),
+    unresolvedIngredients: [...unresolvedIngredients].map(([id, label]) => ({ id, label })),
   };
 }
