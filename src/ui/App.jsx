@@ -23,8 +23,10 @@ export default function App() {
   const [toast, setToast] = useState("");
   const lastSyncedMealReminder = useRef("");
   const lastSyncedWorkoutRest = useRef("");
+  const lastScheduledWorkoutRest = useRef(null);
   const language = normalizeLanguage(state.appSettings?.language);
   const t = createTranslator(language);
+  const WORKOUT_REST_CANCEL_GRACE_MS = 75000;
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
@@ -117,8 +119,15 @@ export default function App() {
     lastSyncedWorkoutRest.current = syncKey;
 
     const operation = syncKey
-      ? scheduleWorkoutRestNotification({ session, t })
-      : cancelScheduledNotifications("workoutRest");
+      ? scheduleWorkoutRestNotification({ session, t }).then(() => {
+        lastScheduledWorkoutRest.current = {
+          sessionId: session.id || "",
+          timerEndsAt: session.timerEndsAt,
+        };
+      })
+      : maybeCancelPendingWorkoutRest(lastScheduledWorkoutRest.current, WORKOUT_REST_CANCEL_GRACE_MS).then((cancelled) => {
+        if (cancelled) lastScheduledWorkoutRest.current = null;
+      });
     operation.catch((error) => console.warn("Workout rest push reminder sync failed", error));
   }, [
     language,
@@ -148,4 +157,16 @@ export default function App() {
       <div className={`toast ${toast ? "show" : ""}`} role="status" aria-live="polite">{toast}</div>
     </div>
   );
+}
+
+async function maybeCancelPendingWorkoutRest(lastScheduled, graceMs) {
+  if (!lastScheduled?.timerEndsAt) {
+    await cancelScheduledNotifications("workoutRest", "", { preserveDueWithinMs: graceMs });
+    return true;
+  }
+  const dueAt = new Date(lastScheduled.timerEndsAt).getTime();
+  if (Number.isNaN(dueAt)) return true;
+  if (Date.now() >= dueAt - graceMs) return false;
+  await cancelScheduledNotifications("workoutRest", "", { preserveDueWithinMs: graceMs });
+  return true;
 }

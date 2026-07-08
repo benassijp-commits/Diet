@@ -3,7 +3,11 @@ import { Bell, Database, Download, Globe2, Sparkles } from "lucide-react";
 import { clearAiSettings, loadAiSettings, saveAiSettings } from "../../ai-settings.js";
 import { SUPPORTED_LANGUAGES } from "../../i18n/index.js";
 import { enablePushNotifications, getPushEnvironmentStatus, pushStatusMessage } from "../../services/push-notifications.js";
-import { getRegisteredNotificationTokenCount } from "../../services/scheduled-notifications.js";
+import {
+  getRegisteredNotificationTokenCount,
+  getScheduledNotificationDiagnostics,
+  scheduleTestNotification,
+} from "../../services/scheduled-notifications.js";
 import InstallAppButton from "../shared/InstallAppButton.jsx";
 
 export default function SettingsTab({ state, dispatch, auth, notify, t, language }) {
@@ -15,14 +19,34 @@ export default function SettingsTab({ state, dispatch, auth, notify, t, language
   const [notificationStatus, setNotificationStatus] = useState(() => pushStatusMessage(getPushEnvironmentStatus(), t));
   const [isEnablingNotifications, setIsEnablingNotifications] = useState(false);
   const [registeredTokenCount, setRegisteredTokenCount] = useState(null);
+  const [notificationDiagnostics, setNotificationDiagnostics] = useState(null);
+  const [isLoadingDiagnostics, setIsLoadingDiagnostics] = useState(false);
+  const [isSchedulingTest, setIsSchedulingTest] = useState(false);
   const [showAdvancedAi, setShowAdvancedAi] = useState(false);
   const publicSettings = ({ apiKey, ...rest }) => rest;
 
+  const refreshNotificationDiagnostics = async () => {
+    setIsLoadingDiagnostics(true);
+    try {
+      const diagnostics = await getScheduledNotificationDiagnostics();
+      setNotificationDiagnostics(diagnostics);
+      setRegisteredTokenCount(diagnostics.tokenCount);
+    } catch (error) {
+      console.warn("Notification diagnostics failed:", error);
+      setNotificationDiagnostics(null);
+      setRegisteredTokenCount(await getRegisteredNotificationTokenCount().catch(() => 0));
+    } finally {
+      setIsLoadingDiagnostics(false);
+    }
+  };
+
   useEffect(() => {
     let active = true;
-    getRegisteredNotificationTokenCount()
-      .then((count) => {
-        if (active) setRegisteredTokenCount(count);
+    getScheduledNotificationDiagnostics()
+      .then((diagnostics) => {
+        if (!active) return;
+        setNotificationDiagnostics(diagnostics);
+        setRegisteredTokenCount(diagnostics.tokenCount);
       })
       .catch(() => {
         if (active) setRegisteredTokenCount(0);
@@ -40,6 +64,7 @@ export default function SettingsTab({ state, dispatch, auth, notify, t, language
       setNotificationStatus(message);
       dispatch({ type: "settings/notifications-enabled", value: result.ok && result.code === "enabled" });
       setRegisteredTokenCount(result.token ? 1 : await getRegisteredNotificationTokenCount().catch(() => 0));
+      refreshNotificationDiagnostics();
       notify(message);
     } catch (error) {
       console.error(error);
@@ -47,6 +72,20 @@ export default function SettingsTab({ state, dispatch, auth, notify, t, language
       notify(t("notifications.error"));
     } finally {
       setIsEnablingNotifications(false);
+    }
+  };
+
+  const handleScheduleTestNotification = async () => {
+    setIsSchedulingTest(true);
+    try {
+      await scheduleTestNotification({ t });
+      await refreshNotificationDiagnostics();
+      notify(t("notifications.testScheduled"));
+    } catch (error) {
+      console.error(error);
+      notify(t("notifications.testScheduleError"));
+    } finally {
+      setIsSchedulingTest(false);
     }
   };
 
@@ -99,6 +138,17 @@ export default function SettingsTab({ state, dispatch, auth, notify, t, language
             <p className="settings-help">
               {registeredTokenCount === 0 ? t("notifications.noRegisteredToken") : t("notifications.registeredTokenStatus", { count: registeredTokenCount ?? "-" })}
             </p>
+            <div className="alert-list">
+              <NotificationDiagnosticRow label={t("notifications.nextMealDiagnostic")} item={notificationDiagnostics?.mealReminder} t={t} />
+              <NotificationDiagnosticRow label={t("notifications.nextWorkoutDiagnostic")} item={notificationDiagnostics?.workoutRest} t={t} />
+              <NotificationDiagnosticRow label={t("notifications.nextTestDiagnostic")} item={notificationDiagnostics?.testReminder} t={t} />
+            </div>
+            <button className="secondary-button" type="button" onClick={refreshNotificationDiagnostics} disabled={isLoadingDiagnostics}>
+              {isLoadingDiagnostics ? t("notifications.refreshingDiagnostics") : t("notifications.refreshDiagnostics")}
+            </button>
+            <button className="secondary-button" type="button" onClick={handleScheduleTestNotification} disabled={isSchedulingTest || !auth?.user}>
+              {isSchedulingTest ? t("notifications.schedulingTest") : t("notifications.scheduleTest")}
+            </button>
             <p className="settings-help">{t("notifications.backendReminderHelp")}</p>
           </div>
         </section>
@@ -133,4 +183,22 @@ export default function SettingsTab({ state, dispatch, auth, notify, t, language
       </div>
     </section>
   );
+}
+
+function NotificationDiagnosticRow({ label, item, t }) {
+  return (
+    <div className="alert-item">
+      <strong>{label}</strong>
+      <span>{item ? `${t("notifications.diagnosticStatus")}: ${item.status || "-"} | ${t("notifications.diagnosticDueAt")}: ${formatDiagnosticDate(item.dueAt)}` : t("notifications.noScheduledNotification")}</span>
+      {item?.sentAt && <span>{t("notifications.diagnosticSentAt")}: {formatDiagnosticDate(item.sentAt)}</span>}
+      {item?.cancelledAt && <span>{t("notifications.diagnosticCancelledAt")}: {formatDiagnosticDate(item.cancelledAt)}</span>}
+    </div>
+  );
+}
+
+function formatDiagnosticDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString();
 }

@@ -13,6 +13,7 @@ import {
 import { db, getCurrentUser } from "./cloud-store.js";
 
 const MEAL_REMINDER_ID = "mealReminder-next";
+const TEST_REMINDER_PREFIX = "testReminder";
 
 export async function scheduleMealReminderNotification({ state, t = (key) => key }) {
   const user = getCurrentUser();
@@ -67,7 +68,7 @@ export async function scheduleWorkoutRestNotification({ session, t = (key) => ke
   }, { merge: true });
 }
 
-export async function cancelScheduledNotifications(type, exceptNotificationId = "") {
+export async function cancelScheduledNotifications(type, exceptNotificationId = "", options = {}) {
   const user = getCurrentUser();
   if (!user) return;
 
@@ -81,8 +82,12 @@ export async function cancelScheduledNotifications(type, exceptNotificationId = 
 
   const batch = writeBatch(db);
   let writeCount = 0;
+  const preserveDueAfter = Number(options.preserveDueWithinMs || 0) > 0
+    ? Date.now() + Number(options.preserveDueWithinMs || 0)
+    : 0;
   for (const notification of snapshot.docs) {
     if (notification.id === exceptNotificationId) continue;
+    if (preserveDueAfter && dueAtMillis(notification.data()?.dueAt) <= preserveDueAfter) continue;
     batch.update(notification.ref, {
       status: "cancelled",
       cancelledAt: serverTimestamp(),
@@ -100,9 +105,72 @@ export async function getRegisteredNotificationTokenCount() {
   const snapshot = await getDocs(query(
     collection(db, "users", user.uid, "notificationTokens"),
     where("enabled", "==", true),
-    limit(2),
+    limit(500),
   ));
   return snapshot.size;
+}
+
+export async function getScheduledNotificationDiagnostics() {
+  const user = getCurrentUser();
+  if (!user) {
+    return {
+      tokenCount: 0,
+      mealReminder: null,
+      workoutRest: null,
+      testReminder: null,
+    };
+  }
+
+  const [tokenCount, mealReminder, workoutRest, testReminder] = await Promise.all([
+    getRegisteredNotificationTokenCount(),
+    getNotificationDiagnostic("mealReminder"),
+    getNotificationDiagnostic("workoutRest"),
+    getNotificationDiagnostic("testReminder"),
+  ]);
+
+  return { tokenCount, mealReminder, workoutRest, testReminder };
+}
+
+export async function scheduleTestNotification({ t = (key) => key } = {}) {
+  const user = getCurrentUser();
+  if (!user) throw new Error("Usuario nao autenticado.");
+  const dueAt = new Date(Date.now() + 60000);
+  const notificationId = `${TEST_REMINDER_PREFIX}-${Date.now()}`;
+  await setDoc(notificationDoc(user.uid, notificationId), {
+    type: "testReminder",
+    dueAt: Timestamp.fromDate(dueAt),
+    status: "pending",
+    title: t("notifications.testTitle"),
+    body: t("notifications.testBody"),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    sentAt: null,
+    cancelledAt: null,
+    relatedMealId: "",
+    workoutSessionId: "",
+    dedupeKey: `testReminder:${dueAt.toISOString()}`,
+  });
+  return { id: notificationId, dueAt: dueAt.toISOString(), status: "pending" };
+}
+
+async function getNotificationDiagnostic(type) {
+  const user = getCurrentUser();
+  if (!user) return null;
+  const snapshot = await getDocs(query(
+    notificationsCollection(user.uid),
+    where("type", "==", type),
+    limit(50),
+  ));
+  const rows = snapshot.docs.map((docSnapshot) => ({
+    id: docSnapshot.id,
+    ...docSnapshot.data(),
+  }));
+
+  const pending = rows
+    .filter((row) => row.status === "pending")
+    .sort((left, right) => dueAtMillis(left.dueAt) - dueAtMillis(right.dueAt))[0];
+  const fallback = rows.sort((left, right) => updatedAtMillis(right) - updatedAtMillis(left))[0];
+  return notificationDiagnosticRow(pending || fallback || null);
 }
 
 function notificationsCollection(uid) {
@@ -133,4 +201,42 @@ function hasPlannedMealAfter(state, mealId) {
 
 function validIso(value) {
   return Boolean(value && !Number.isNaN(new Date(value).getTime()));
+}
+
+function notificationDiagnosticRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    type: row.type || "",
+    status: row.status || "unknown",
+    dueAt: toIso(row.dueAt),
+    sentAt: toIso(row.sentAt),
+    cancelledAt: toIso(row.cancelledAt),
+    delivery: row.delivery || null,
+  };
+}
+
+function updatedAtMillis(row) {
+  return Math.max(timestampMillis(row.updatedAt), timestampMillis(row.createdAt), timestampMillis(row.dueAt));
+}
+
+function dueAtMillis(value) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const time = timestampMillis(value);
+  return time || Number.POSITIVE_INFINITY;
+}
+
+function timestampMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  const date = value instanceof Date ? value : new Date(value);
+  const time = date.getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function toIso(value) {
+  if (!value) return "";
+  if (typeof value.toDate === "function") return value.toDate().toISOString();
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
