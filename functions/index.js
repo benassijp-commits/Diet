@@ -167,13 +167,11 @@ export const processScheduledNotifications = onSchedule("every 1 minutes", async
     }
 
     try {
-      const tokenSnapshot = await firestore.collection("users").doc(uid).collection("notificationTokens")
-        .where("enabled", "==", true)
-        .limit(500)
-        .get();
-      const tokens = tokenSnapshot.docs
-        .map((tokenDoc) => ({ ref: tokenDoc.ref, token: String(tokenDoc.data().token || "") }))
-        .filter((item) => item.token);
+      const targetToken = String(notification.targetToken || "").trim();
+      const targetTokenId = String(notification.targetTokenId || "").trim();
+      const tokens = targetToken
+        ? [{ ref: targetTokenId ? firestore.collection("users").doc(uid).collection("notificationTokens").doc(targetTokenId) : null, token: targetToken }]
+        : await getEnabledNotificationTokens(uid);
 
       if (!tokens.length) {
         await markNotificationFailed(notificationDoc.ref, "no-active-token");
@@ -214,6 +212,7 @@ export const processScheduledNotifications = onSchedule("every 1 minutes", async
         delivery: {
           successCount: response.successCount,
           failureCount: response.failureCount,
+          targeted: Boolean(targetToken),
         },
       });
       sent += 1;
@@ -232,6 +231,16 @@ export const processScheduledNotifications = onSchedule("every 1 minutes", async
     typeCounts,
   });
 });
+
+async function getEnabledNotificationTokens(uid) {
+  const tokenSnapshot = await firestore.collection("users").doc(uid).collection("notificationTokens")
+    .where("enabled", "==", true)
+    .limit(500)
+    .get();
+  return tokenSnapshot.docs
+    .map((tokenDoc) => ({ ref: tokenDoc.ref, token: String(tokenDoc.data().token || "") }))
+    .filter((item) => item.token);
+}
 
 function validateMessages(messages) {
   if (!Array.isArray(messages) || !messages.length || messages.length > 12) {
@@ -585,7 +594,7 @@ async function markInvalidTokens(tokens, responses) {
   let invalidCount = 0;
   responses.forEach((response, index) => {
     const code = response.error?.code || "";
-    if (!code || !INVALID_TOKEN_CODES.has(code)) return;
+    if (!code || !INVALID_TOKEN_CODES.has(code) || !tokens[index]?.ref) return;
     invalidCount += 1;
     batch.update(tokens[index].ref, {
       enabled: false,

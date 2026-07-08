@@ -153,6 +153,31 @@ export async function scheduleTestNotification({ t = (key) => key } = {}) {
   return { id: notificationId, dueAt: dueAt.toISOString(), status: "pending" };
 }
 
+export async function scheduleDeviceTestNotification({ token, tokenId = "", t = (key) => key } = {}) {
+  const user = getCurrentUser();
+  if (!user) throw new Error("Usuario nao autenticado.");
+  if (!token) throw new Error("Token FCM ausente.");
+  const dueAt = new Date(Date.now() + 15000);
+  const notificationId = `${TEST_REMINDER_PREFIX}-device-${Date.now()}`;
+  await setDoc(notificationDoc(user.uid, notificationId), {
+    type: "testReminder",
+    dueAt: Timestamp.fromDate(dueAt),
+    status: "pending",
+    title: t("notifications.deviceTestTitle"),
+    body: t("notifications.deviceTestBody"),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    sentAt: null,
+    cancelledAt: null,
+    relatedMealId: "",
+    workoutSessionId: "",
+    targetToken: token,
+    targetTokenId: tokenId || encodeURIComponent(token),
+    dedupeKey: `testReminder:device:${dueAt.toISOString()}`,
+  });
+  return { id: notificationId, dueAt: dueAt.toISOString(), status: "pending" };
+}
+
 async function getNotificationDiagnostic(type) {
   const user = getCurrentUser();
   if (!user) return null;

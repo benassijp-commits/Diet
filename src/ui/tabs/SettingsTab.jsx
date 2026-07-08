@@ -2,9 +2,16 @@ import { useEffect, useState } from "react";
 import { Bell, Database, Download, Globe2, Sparkles } from "lucide-react";
 import { clearAiSettings, loadAiSettings, saveAiSettings } from "../../ai-settings.js";
 import { SUPPORTED_LANGUAGES } from "../../i18n/index.js";
-import { enablePushNotifications, getPushEnvironmentStatus, pushStatusMessage } from "../../services/push-notifications.js";
+import {
+  enablePushNotifications,
+  getCurrentPushDiagnostics,
+  getPushEnvironmentStatus,
+  pushStatusMessage,
+  recreateCurrentDeviceToken,
+} from "../../services/push-notifications.js";
 import {
   getRegisteredNotificationTokenCount,
+  scheduleDeviceTestNotification,
   getScheduledNotificationDiagnostics,
   scheduleTestNotification,
 } from "../../services/scheduled-notifications.js";
@@ -20,8 +27,11 @@ export default function SettingsTab({ state, dispatch, auth, notify, t, language
   const [isEnablingNotifications, setIsEnablingNotifications] = useState(false);
   const [registeredTokenCount, setRegisteredTokenCount] = useState(null);
   const [notificationDiagnostics, setNotificationDiagnostics] = useState(null);
+  const [pushDiagnostics, setPushDiagnostics] = useState(null);
   const [isLoadingDiagnostics, setIsLoadingDiagnostics] = useState(false);
   const [isSchedulingTest, setIsSchedulingTest] = useState(false);
+  const [isRecreatingToken, setIsRecreatingToken] = useState(false);
+  const [isSendingDeviceTest, setIsSendingDeviceTest] = useState(false);
   const [showAdvancedAi, setShowAdvancedAi] = useState(false);
   const publicSettings = ({ apiKey, ...rest }) => rest;
 
@@ -29,7 +39,9 @@ export default function SettingsTab({ state, dispatch, auth, notify, t, language
     setIsLoadingDiagnostics(true);
     try {
       const diagnostics = await getScheduledNotificationDiagnostics();
+      const push = await getCurrentPushDiagnostics();
       setNotificationDiagnostics(diagnostics);
+      setPushDiagnostics(push);
       setRegisteredTokenCount(diagnostics.tokenCount);
     } catch (error) {
       console.warn("Notification diagnostics failed:", error);
@@ -43,10 +55,11 @@ export default function SettingsTab({ state, dispatch, auth, notify, t, language
   useEffect(() => {
     let active = true;
     getScheduledNotificationDiagnostics()
-      .then((diagnostics) => {
+      .then(async (diagnostics) => {
         if (!active) return;
         setNotificationDiagnostics(diagnostics);
         setRegisteredTokenCount(diagnostics.tokenCount);
+        setPushDiagnostics(await getCurrentPushDiagnostics());
       })
       .catch(() => {
         if (active) setRegisteredTokenCount(0);
@@ -86,6 +99,37 @@ export default function SettingsTab({ state, dispatch, auth, notify, t, language
       notify(t("notifications.testScheduleError"));
     } finally {
       setIsSchedulingTest(false);
+    }
+  };
+
+  const handleRecreateCurrentToken = async () => {
+    setIsRecreatingToken(true);
+    try {
+      const result = await recreateCurrentDeviceToken();
+      setPushDiagnostics(result.diagnostics);
+      await refreshNotificationDiagnostics();
+      notify(pushStatusMessage(result, t));
+    } catch (error) {
+      console.error(error);
+      notify(t("notifications.recreateTokenError"));
+    } finally {
+      setIsRecreatingToken(false);
+    }
+  };
+
+  const handleSendDeviceTest = async () => {
+    setIsSendingDeviceTest(true);
+    try {
+      const diagnostics = pushDiagnostics?.token ? pushDiagnostics : await getCurrentPushDiagnostics();
+      if (!diagnostics?.token) throw new Error("Token FCM ausente.");
+      await scheduleDeviceTestNotification({ token: diagnostics.token, tokenId: diagnostics.tokenId, t });
+      await refreshNotificationDiagnostics();
+      notify(t("notifications.deviceTestScheduled"));
+    } catch (error) {
+      console.error(error);
+      notify(t("notifications.deviceTestError"));
+    } finally {
+      setIsSendingDeviceTest(false);
     }
   };
 
@@ -139,6 +183,9 @@ export default function SettingsTab({ state, dispatch, auth, notify, t, language
               {registeredTokenCount === 0 ? t("notifications.noRegisteredToken") : t("notifications.registeredTokenStatus", { count: registeredTokenCount ?? "-" })}
             </p>
             <div className="alert-list">
+              <PushDiagnosticRow diagnostics={pushDiagnostics} t={t} />
+            </div>
+            <div className="alert-list">
               <NotificationDiagnosticRow label={t("notifications.nextMealDiagnostic")} item={notificationDiagnostics?.mealReminder} t={t} />
               <NotificationDiagnosticRow label={t("notifications.nextWorkoutDiagnostic")} item={notificationDiagnostics?.workoutRest} t={t} />
               <NotificationDiagnosticRow label={t("notifications.nextTestDiagnostic")} item={notificationDiagnostics?.testReminder} t={t} />
@@ -148,6 +195,12 @@ export default function SettingsTab({ state, dispatch, auth, notify, t, language
             </button>
             <button className="secondary-button" type="button" onClick={handleScheduleTestNotification} disabled={isSchedulingTest || !auth?.user}>
               {isSchedulingTest ? t("notifications.schedulingTest") : t("notifications.scheduleTest")}
+            </button>
+            <button className="secondary-button" type="button" onClick={handleRecreateCurrentToken} disabled={isRecreatingToken || !auth?.user}>
+              {isRecreatingToken ? t("notifications.recreatingToken") : t("notifications.recreateToken")}
+            </button>
+            <button className="secondary-button" type="button" onClick={handleSendDeviceTest} disabled={isSendingDeviceTest || !auth?.user || !pushDiagnostics?.token}>
+              {isSendingDeviceTest ? t("notifications.schedulingTest") : t("notifications.sendDeviceTest")}
             </button>
             <p className="settings-help">{t("notifications.backendReminderHelp")}</p>
           </div>
@@ -182,6 +235,19 @@ export default function SettingsTab({ state, dispatch, auth, notify, t, language
         </section>
       </div>
     </section>
+  );
+}
+
+function PushDiagnosticRow({ diagnostics, t }) {
+  const serviceWorker = diagnostics?.serviceWorker;
+  return (
+    <div className="alert-item">
+      <strong>{t("notifications.pushDiagnostics")}</strong>
+      <span>{t("notifications.permissionDiagnostic")}: {diagnostics?.permission || "-"}</span>
+      <span>{t("notifications.currentToken")}: {diagnostics?.tokenPreview || "-"}</span>
+      <span>{t("notifications.fcmServiceWorker")}: {serviceWorker ? `${serviceWorker.state || "-"} | ${serviceWorker.scope || "-"} | ${serviceWorker.scriptURL || "-"}` : "-"}</span>
+      <span>{t("notifications.deviceInfo")}: {diagnostics?.platform || "-"} | {diagnostics?.userAgent || "-"}</span>
+    </div>
   );
 }
 
