@@ -1534,7 +1534,6 @@ input {
   }
 
   .timing-grid,
-  .meal-actions,
   .cart-summary-row {
     grid-template-columns: 1fr;
   }
@@ -2469,7 +2468,6 @@ input:focus {
     flex-direction: column;
   }
 
-  .meal-actions,
   .cart-summary-row {
     grid-template-columns: 1fr;
   }
