@@ -2278,6 +2278,42 @@ tbody tr:hover td {
   flex-wrap: wrap;
 }
 
+.install-diagnostics {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.install-diagnostics dl {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.5rem 0 0;
+}
+
+.install-diagnostics div {
+  display: grid;
+  grid-template-columns: minmax(8.5rem, 0.8fr) minmax(0, 1.2fr);
+  gap: 0.5rem;
+}
+
+.install-diagnostics dt {
+  color: var(--muted);
+}
+
+.install-diagnostics dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.install-brave-note {
+  margin: 0 0 0.5rem;
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
 .install-help-modal {
   max-width: 440px;
 }

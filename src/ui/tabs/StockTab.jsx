@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { loadAiSettings } from "../../ai-settings.js";
+import { resolveIngredientMatch } from "../../ingredient-matching.js";
 import { resolveIngredientNutrition } from "../../nutrition-service.js";
 import {
   allIngredientCatalogItems,
@@ -13,7 +14,7 @@ import {
   stockStatusForIngredient,
   unitForIngredient,
 } from "../../state/app-state.js";
-import { formatQty, normalizeText } from "../../utils.js";
+import { formatQty } from "../../utils.js";
 import IngredientAutocomplete from "../shared/IngredientAutocomplete.jsx";
 
 const emptyDraft = {
@@ -62,10 +63,14 @@ export default function StockTab({ state, dispatch, notify, t = (key) => key, la
       notify(t("stock.invalidName"));
       return;
     }
-    const duplicate = catalog.find((item) => normalizeText(item.name) === normalizeText(name) && item.id !== draft.id);
-    if (duplicate) {
-      notify(t("stock.duplicate"));
+    const duplicate = resolveIngredientMatch(name, state, { items: catalog });
+    if (duplicate?.item && duplicate.item.id !== draft.id && duplicate.confidence !== "probable") {
+      notify(t("stock.duplicateIngredient", { name: duplicate.item.name || duplicate.item.id }));
       return;
+    }
+    if (duplicate?.item && duplicate.item.id !== draft.id && duplicate.confidence === "probable") {
+      const shouldCreate = confirm(t("stock.similarIngredientConfirm", { name: duplicate.item.name || duplicate.item.id }));
+      if (!shouldCreate) return;
     }
     let nutrition = {
       kcal: Number(draft.kcal || 0),

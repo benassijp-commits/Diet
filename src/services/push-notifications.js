@@ -5,6 +5,8 @@ import { app, db, getCurrentUser } from "./cloud-store.js";
 
 const FCM_SERVICE_WORKER_URL = "/firebase-messaging-sw.js";
 const FCM_SERVICE_WORKER_SCOPE = "/firebase-cloud-messaging-push-scope/";
+const PERMISSION_PROMPT_KEY = "joao-diet-notification-permission-prompted-at";
+const PROMPT_COOLDOWN_MS = 10 * 60 * 1000;
 
 let foregroundUnsubscribe = null;
 
@@ -12,13 +14,17 @@ const STATUS_MESSAGES = {
   unsupported: "Este navegador nao suporta notificacoes.",
   "insecure-context": "As notificacoes e instalacao do app precisam de HTTPS ou localhost. Em celular, IP local HTTP nao funciona.",
   "service-worker-unsupported": "Este navegador nao suporta service workers.",
+  "messaging-unsupported": "Este navegador nao suporta Firebase Messaging.",
   denied: "Permissao de notificacoes negada no navegador.",
+  "denied-settings": "Permissao de notificacoes bloqueada. Libere nas configuracoes do navegador/Android para tentar novamente.",
   "missing-vapid": "Chave publica VAPID ausente.",
   "signed-out": "Entre com Google para ativar notificacoes.",
   ready: "Pronto para ativar notificacoes.",
   enabled: "Notificacoes ativadas.",
   "permission-dismissed": "Permissao de notificacoes nao foi concedida.",
+  "permission-recently-dismissed": "Permissao nao concedida recentemente. Libere nas configuracoes do navegador ou tente novamente mais tarde.",
   "no-token": "Nao foi possivel gerar o token de notificacoes.",
+  "token-failed": "Permissao concedida, mas nao foi possivel registrar este dispositivo.",
   "setup-failed": "Nao foi possivel configurar notificacoes.",
 };
 
@@ -27,10 +33,10 @@ export function getPushEnvironmentStatus() {
   if (window.isSecureContext === false) return pushStatus(false, "insecure-context");
   if (!("Notification" in window)) return pushStatus(false, "unsupported");
   if (!("serviceWorker" in navigator)) return pushStatus(false, "service-worker-unsupported");
-  if (Notification.permission === "denied") return pushStatus(false, "denied");
+  if (Notification.permission === "denied") return pushStatus(false, "denied-settings", { permission: Notification.permission });
   if (!import.meta.env.VITE_FIREBASE_VAPID_KEY) return pushStatus(false, "missing-vapid");
   if (!getCurrentUser()) return pushStatus(false, "signed-out");
-  return pushStatus(true, Notification.permission === "granted" ? "enabled" : "ready");
+  return pushStatus(true, Notification.permission === "granted" ? "enabled" : "ready", { permission: Notification.permission });
 }
 
 export async function enablePushNotifications() {
@@ -38,11 +44,19 @@ export async function enablePushNotifications() {
   if (!environment.ok) return environment;
 
   const supported = await isSupported();
-  if (!supported) return pushStatus(false, "unsupported");
+  if (!supported) return pushStatus(false, "messaging-unsupported", { permission: Notification.permission });
 
-  const permission = await Notification.requestPermission();
-  if (permission === "denied") return pushStatus(false, "denied");
-  if (permission !== "granted") return pushStatus(false, "permission-dismissed");
+  let permission = Notification.permission;
+  if (permission === "denied") return pushStatus(false, "denied-settings", { permission });
+  if (permission !== "granted") {
+    if (wasPermissionPromptedRecently()) {
+      return pushStatus(false, "permission-recently-dismissed", { permission });
+    }
+    markPermissionPrompted();
+    permission = await Notification.requestPermission();
+  }
+  if (permission === "denied") return pushStatus(false, "denied-settings", { permission });
+  if (permission !== "granted") return pushStatus(false, "permission-dismissed", { permission });
 
   let registration;
   try {
@@ -64,11 +78,15 @@ export async function enablePushNotifications() {
       serviceWorkerRegistration: registration,
     });
   } catch (error) {
-    console.error(error);
-    return pushStatus(false, "no-token");
+    console.warn("FCM getToken failed", {
+      code: error?.code || "",
+      message: error?.message || "",
+      permission,
+    });
+    return pushStatus(false, "token-failed", { permission, errorCode: error?.code || "" });
   }
 
-  if (!token) return pushStatus(false, "no-token");
+  if (!token) return pushStatus(false, "no-token", { permission });
 
   await saveNotificationToken(token);
   return { ...pushStatus(true, "enabled"), token };
@@ -124,10 +142,20 @@ function waitForServiceWorkerActivation(registration) {
   });
 }
 
-function pushStatus(ok, code) {
+function wasPermissionPromptedRecently() {
+  const lastPrompt = Number(localStorage.getItem(PERMISSION_PROMPT_KEY) || 0);
+  return lastPrompt > 0 && Date.now() - lastPrompt < PROMPT_COOLDOWN_MS;
+}
+
+function markPermissionPrompted() {
+  localStorage.setItem(PERMISSION_PROMPT_KEY, String(Date.now()));
+}
+
+function pushStatus(ok, code, detail = {}) {
   return {
     ok,
     code,
     message: STATUS_MESSAGES[code] || STATUS_MESSAGES["setup-failed"],
+    ...detail,
   };
 }
