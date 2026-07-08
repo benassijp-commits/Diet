@@ -4,6 +4,7 @@ import { extractDietFileText } from "../../diet-file-text.js";
 import { importDietFromText } from "../../diet-importer.js";
 import { importWorkoutFromText } from "../../workout-importer.js";
 import { resolveIngredientMatch } from "../../ingredient-matching.js";
+import { resolveImportedIngredientNutrition } from "../../services/cloud-store.js";
 import { allIngredientCatalogItems, createStockItemId } from "../../state/app-state.js";
 import Modal from "./Modal.jsx";
 
@@ -21,16 +22,30 @@ export default function ImportDialog({ title, kind, state, onClose, dispatch, no
     setStatus(kind === "diet" ? t("import.dietStatus") : t("import.workoutStatus"));
     try {
       const imported = kind === "diet"
-        ? prepareImportedDiet(await importDietFromText({ text, settings }), state)
+        ? await prepareImportedDiet(await importDietFromText({ text, settings }), state, {
+          language: state.appSettings?.language || "pt",
+          setStatus: (message) => setStatus(message),
+          t,
+        })
         : await importWorkoutFromText({ text, settings });
       dispatch({ type: kind === "diet" ? "diet/import" : "workout/import", imported });
       if (kind === "diet" && imported.unresolvedIngredients?.length) {
-        const message = t("import.dietNeedsNutrition", { count: imported.unresolvedIngredients.length });
+        const message = t("import.dietAutoResolveSummary", {
+          resolved: imported.autoResolveStats?.resolved || 0,
+          added: imported.autoResolveStats?.addedToGlobal || 0,
+          unresolved: imported.unresolvedIngredients.length,
+        });
         setStatus(message);
         notify(message);
         return;
       }
-      const message = kind === "diet" ? t("import.dietSuccess") : t("import.workoutSuccess");
+      const message = kind === "diet" && imported.autoResolveStats
+        ? t("import.dietAutoResolveSummary", {
+          resolved: imported.autoResolveStats.resolved,
+          added: imported.autoResolveStats.addedToGlobal,
+          unresolved: imported.unresolvedIngredients?.length || 0,
+        })
+        : kind === "diet" ? t("import.dietSuccess") : t("import.workoutSuccess");
       setStatus(message);
       notify(message);
       onClose();
@@ -69,13 +84,13 @@ export default function ImportDialog({ title, kind, state, onClose, dispatch, no
   );
 }
 
-function prepareImportedDiet(imported, state) {
+async function prepareImportedDiet(imported, state, options = {}) {
   const stockItems = {};
   const createdByName = new Map();
   const existing = allIngredientCatalogItems(state);
   const unresolvedIngredients = new Map();
 
-  return {
+  const prepared = {
     ...imported,
     stockItems,
     meals: imported.meals.map((meal) => ({
@@ -111,4 +126,67 @@ function prepareImportedDiet(imported, state) {
     })),
     unresolvedIngredients: [...unresolvedIngredients].map(([id, label]) => ({ id, label })),
   };
+
+  if (prepared.unresolvedIngredients.length) {
+    await autoResolveImportedIngredients(prepared, options);
+  }
+
+  return prepared;
+}
+
+async function autoResolveImportedIngredients(imported, { language = "pt", setStatus, t = (key) => key } = {}) {
+  const stats = { resolved: 0, addedToGlobal: 0, unresolved: imported.unresolvedIngredients.length };
+  const pending = imported.unresolvedIngredients.slice(0, 12);
+
+  for (let index = 0; index < pending.length; index += 1) {
+    const ingredient = pending[index];
+    const usage = findFirstImportedIngredientUsage(imported, ingredient.id);
+    setStatus?.(t("import.resolvingNutrition", { current: index + 1, total: pending.length }));
+
+    try {
+      const result = await resolveImportedIngredientNutrition({
+        label: ingredient.label,
+        qty: usage?.qty || 0,
+        unit: usage?.unit || imported.stockItems[ingredient.id]?.unit || "g",
+        language,
+        mealContext: usage?.mealTitle || "",
+      });
+      if (!result?.resolved || !result.food?.id) continue;
+
+      delete imported.stockItems[ingredient.id];
+      imported.stockItems[result.food.id] = result.food;
+      replaceImportedStockItemId(imported, ingredient.id, result.food.id);
+      stats.resolved += 1;
+      if (result.addedToGlobal) stats.addedToGlobal += 1;
+    } catch (error) {
+      console.warn("Imported ingredient auto-resolve failed:", error?.code || error?.message || error);
+    }
+  }
+
+  imported.unresolvedIngredients = imported.unresolvedIngredients.filter((ingredient) => imported.stockItems[ingredient.id]?.nutritionStatus === "missing");
+  stats.unresolved = imported.unresolvedIngredients.length;
+  imported.autoResolveStats = stats;
+}
+
+function findFirstImportedIngredientUsage(imported, stockItemId) {
+  for (const meal of imported.meals || []) {
+    for (const items of Object.values(meal.options || {})) {
+      const item = items.find((current) => current.stockItemId === stockItemId);
+      if (item) return { ...item, mealTitle: meal.title };
+    }
+  }
+  return null;
+}
+
+function replaceImportedStockItemId(imported, fromId, toId) {
+  for (const meal of imported.meals || []) {
+    for (const items of Object.values(meal.options || {})) {
+      for (const item of items) {
+        if (item.stockItemId === fromId) {
+          item.stockItemId = toId;
+          item.needsReview = false;
+        }
+      }
+    }
+  }
 }

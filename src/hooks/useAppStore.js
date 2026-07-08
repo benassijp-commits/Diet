@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { getCurrentUser, saveUserState, signIn, signOut, watchSession } from "../services/cloud-store.js";
+import { getCurrentUser, saveUserState, signIn, signOut, watchApprovedGlobalFoods, watchSession } from "../services/cloud-store.js";
 import { getCloudState, loadStoredState, migrateState, persistState, reducer } from "../state/app-state.js";
 
 export function useAppStore() {
@@ -112,6 +112,20 @@ export function useAppStore() {
       },
     });
   }, []);
+
+  useEffect(() => watchApprovedGlobalFoods({
+    onFoods(items) {
+      applyingRemote.current = true;
+      skipNextRemoteStateSave.current = true;
+      baseDispatch({ type: "stock/global-foods", items });
+      setTimeout(() => {
+        applyingRemote.current = false;
+      }, 0);
+    },
+    onError(error) {
+      console.warn("Global foods sync failed:", error);
+    },
+  }), []);
 
   const auth = useMemo(() => ({
     user,

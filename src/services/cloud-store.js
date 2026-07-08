@@ -9,17 +9,22 @@ import {
   signOut as firebaseSignOut,
 } from "firebase/auth";
 import {
+  collection,
   doc,
   getFirestore,
   onSnapshot,
+  query,
   serverTimestamp,
   setDoc,
+  where,
 } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { firebaseConfig } from "../../firebase-config.js";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const functions = getFunctions(app);
 const provider = new GoogleAuthProvider();
 
 export { app, db };
@@ -75,12 +80,50 @@ export async function saveUserState(state) {
   });
 }
 
+export function watchApprovedGlobalFoods({ onFoods, onError }) {
+  return onSnapshot(
+    query(collection(db, "globalFoods"), where("status", "==", "approved")),
+    (snapshot) => onFoods(snapshot.docs.map((foodDoc) => globalFoodToStockItem({ id: foodDoc.id, ...foodDoc.data() }))),
+    onError,
+  );
+}
+
+export async function resolveImportedIngredientNutrition(input) {
+  const callable = httpsCallable(functions, "resolveIngredientNutrition");
+  const result = await callable(input);
+  return result.data || {};
+}
+
 function userStateDoc(uid) {
   return doc(db, "users", uid, "state", stateDocumentId());
 }
 
 function stateDocumentId() {
   return "current";
+}
+
+function globalFoodToStockItem(food) {
+  return {
+    id: food.id,
+    globalFoodId: food.id,
+    name: food.name || food.names?.pt || food.id,
+    unit: food.unit || "g",
+    names: food.names || { pt: food.name || food.id },
+    aliasesByLanguage: food.aliasesByLanguage || {},
+    nutrition: perUnitNutrition(food.nutrition),
+    nutritionSource: food.nutritionSource || "global_food",
+    nutritionStatus: "approved",
+    needsReview: false,
+  };
+}
+
+function perUnitNutrition(nutrition) {
+  return {
+    kcal: Number(nutrition?.kcal || 0) / 100,
+    protein: Number(nutrition?.protein || 0) / 100,
+    carbs: Number(nutrition?.carbs || 0) / 100,
+    fat: Number(nutrition?.fat || 0) / 100,
+  };
 }
 
 getRedirectResult(auth).catch((error) => {

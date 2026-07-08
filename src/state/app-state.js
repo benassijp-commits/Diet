@@ -111,7 +111,7 @@ export function getCloudState(state) {
   const cloudState = clone(state);
   for (const key of LOCAL_UI_STATE_KEYS) delete cloudState[key];
   cloudState.stockItems = Object.fromEntries(
-    Object.entries(cloudState.stockItems || {}).filter(([id]) => !BASE_INGREDIENT_CATALOG_IDS.has(id)),
+    Object.entries(cloudState.stockItems || {}).filter(([id, item]) => !BASE_INGREDIENT_CATALOG_IDS.has(id) && !item?.globalFoodId),
   );
   return cloudState;
 }
@@ -254,6 +254,14 @@ export function reducer(state, action) {
       return next;
     case "stock/upsert-item":
       next.stockItems[action.item.id] = action.item;
+      return next;
+    case "stock/global-foods":
+      for (const id of Object.keys(next.stockItems)) {
+        if (next.stockItems[id]?.globalFoodId) delete next.stockItems[id];
+      }
+      for (const item of action.items || []) {
+        if (item?.id) next.stockItems[item.id] = item;
+      }
       return next;
     case "settings/language":
       next.appSettings.language = action.language === "en" ? "en" : "pt";
