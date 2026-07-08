@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Bell, Database, Download, Globe2, Sparkles } from "lucide-react";
 import { clearAiSettings, loadAiSettings, saveAiSettings } from "../../ai-settings.js";
 import { SUPPORTED_LANGUAGES } from "../../i18n/index.js";
 import { enablePushNotifications, getPushEnvironmentStatus, pushStatusMessage } from "../../services/push-notifications.js";
+import { getRegisteredNotificationTokenCount } from "../../services/scheduled-notifications.js";
 import InstallAppButton from "../shared/InstallAppButton.jsx";
 
-export default function SettingsTab({ state, dispatch, notify, t, language }) {
+export default function SettingsTab({ state, dispatch, auth, notify, t, language }) {
   const [settings, setSettings] = useState(() => {
     const local = loadAiSettings();
     const saved = state.appSettings?.aiSettings || {};
@@ -13,8 +14,23 @@ export default function SettingsTab({ state, dispatch, notify, t, language }) {
   });
   const [notificationStatus, setNotificationStatus] = useState(() => pushStatusMessage(getPushEnvironmentStatus(), t));
   const [isEnablingNotifications, setIsEnablingNotifications] = useState(false);
+  const [registeredTokenCount, setRegisteredTokenCount] = useState(null);
   const [showAdvancedAi, setShowAdvancedAi] = useState(false);
   const publicSettings = ({ apiKey, ...rest }) => rest;
+
+  useEffect(() => {
+    let active = true;
+    getRegisteredNotificationTokenCount()
+      .then((count) => {
+        if (active) setRegisteredTokenCount(count);
+      })
+      .catch(() => {
+        if (active) setRegisteredTokenCount(0);
+      });
+    return () => {
+      active = false;
+    };
+  }, [auth?.user?.uid, state.appSettings?.notificationsEnabled]);
 
   const handleEnableNotifications = async () => {
     setIsEnablingNotifications(true);
@@ -23,6 +39,7 @@ export default function SettingsTab({ state, dispatch, notify, t, language }) {
       const message = pushStatusMessage(result, t);
       setNotificationStatus(message);
       dispatch({ type: "settings/notifications-enabled", value: result.ok && result.code === "enabled" });
+      setRegisteredTokenCount(result.token ? 1 : await getRegisteredNotificationTokenCount().catch(() => 0));
       notify(message);
     } catch (error) {
       console.error(error);
@@ -58,12 +75,31 @@ export default function SettingsTab({ state, dispatch, notify, t, language }) {
             <label className="toggle-control">
               <input
                 type="checkbox"
+                checked={Boolean(state.appSettings?.notificationsEnabled)}
+                onChange={(event) => dispatch({ type: "settings/notifications-enabled", value: event.target.checked })}
+              />
+              {t("notifications.enabledToggle")}
+            </label>
+            <label className="toggle-control">
+              <input
+                type="checkbox"
                 checked={Boolean(state.appSettings?.notificationTypes?.mealReminders)}
                 onChange={(event) => dispatch({ type: "settings/notification-type", notificationType: "mealReminders", value: event.target.checked })}
               />
               {t("notifications.mealReminders")}
             </label>
-            <p className="settings-help">{t("notifications.localMealReminderHelp")}</p>
+            <label className="toggle-control">
+              <input
+                type="checkbox"
+                checked={Boolean(state.appSettings?.notificationTypes?.workoutRestReminders)}
+                onChange={(event) => dispatch({ type: "settings/notification-type", notificationType: "workoutRestReminders", value: event.target.checked })}
+              />
+              {t("notifications.workoutRestReminders")}
+            </label>
+            <p className="settings-help">
+              {registeredTokenCount === 0 ? t("notifications.noRegisteredToken") : t("notifications.registeredTokenStatus", { count: registeredTokenCount ?? "-" })}
+            </p>
+            <p className="settings-help">{t("notifications.backendReminderHelp")}</p>
           </div>
         </section>
 

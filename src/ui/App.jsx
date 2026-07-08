@@ -1,8 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../hooks/useAppStore.js";
 import { tabs } from "../state/app-state.js";
 import { createTranslator, normalizeLanguage } from "../i18n/index.js";
 import { listenForForegroundMessages } from "../services/push-notifications.js";
+import {
+  cancelScheduledNotifications,
+  scheduleMealReminderNotification,
+  scheduleWorkoutRestNotification,
+} from "../services/scheduled-notifications.js";
 import Sidebar from "./layout/Sidebar.jsx";
 import Topbar from "./layout/Topbar.jsx";
 import MealsTab from "./meals/MealsTab.jsx";
@@ -16,6 +21,8 @@ export default function App() {
   const { state, dispatch, auth } = useAppStore();
   const [activeTab, setActiveTab] = useState("meals");
   const [toast, setToast] = useState("");
+  const lastSyncedMealReminder = useRef("");
+  const lastSyncedWorkoutRest = useRef("");
   const language = normalizeLanguage(state.appSettings?.language);
   const t = createTranslator(language);
 
@@ -74,6 +81,52 @@ export default function App() {
     state.appSettings?.notificationsEnabled,
     state.mealReminder?.lastMealReminderNotifiedAt,
     state.mealReminder?.nextMealReminderAt,
+    t,
+  ]);
+
+  useEffect(() => {
+    const reminderAt = state.mealReminder?.nextMealReminderAt || "";
+    const baseMealId = state.mealReminder?.lastMealReminderBaseMealId || "";
+    const enabled = Boolean(state.appSettings?.notificationsEnabled && state.appSettings?.notificationTypes?.mealReminders);
+    const syncKey = enabled && reminderAt && baseMealId ? `${baseMealId}|${reminderAt}|${language}` : "";
+
+    if (lastSyncedMealReminder.current === syncKey) return;
+    lastSyncedMealReminder.current = syncKey;
+
+    const operation = syncKey
+      ? scheduleMealReminderNotification({ state, t })
+      : cancelScheduledNotifications("mealReminder");
+    operation.catch((error) => console.warn("Meal push reminder sync failed", error));
+  }, [
+    language,
+    state.appSettings?.notificationTypes?.mealReminders,
+    state.appSettings?.notificationsEnabled,
+    state.mealReminder?.lastMealReminderBaseMealId,
+    state.mealReminder?.nextMealReminderAt,
+    t,
+  ]);
+
+  useEffect(() => {
+    const session = state.workoutSession;
+    const enabled = Boolean(state.appSettings?.notificationsEnabled && state.appSettings?.notificationTypes?.workoutRestReminders);
+    const syncKey = enabled && session?.phase === "rest" && session?.timerEndsAt
+      ? `${session.id}|${session.timerEndsAt}|${language}`
+      : "";
+
+    if (lastSyncedWorkoutRest.current === syncKey) return;
+    lastSyncedWorkoutRest.current = syncKey;
+
+    const operation = syncKey
+      ? scheduleWorkoutRestNotification({ session, t })
+      : cancelScheduledNotifications("workoutRest");
+    operation.catch((error) => console.warn("Workout rest push reminder sync failed", error));
+  }, [
+    language,
+    state.appSettings?.notificationTypes?.workoutRestReminders,
+    state.appSettings?.notificationsEnabled,
+    state.workoutSession?.id,
+    state.workoutSession?.phase,
+    state.workoutSession?.timerEndsAt,
     t,
   ]);
 

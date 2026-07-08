@@ -73,6 +73,7 @@ export const initialState = {
     notificationsEnabled: false,
     notificationTypes: {
       mealReminders: true,
+      workoutRestReminders: true,
       stockAlerts: false,
       cartAlerts: false,
     },
@@ -835,6 +836,10 @@ function scheduleNextMealReminder(next, mealId, completedAt) {
     clearMealReminder(next);
     return;
   }
+  if (!hasPlannedMealAfter(next, mealId)) {
+    clearMealReminder(next);
+    return;
+  }
   const minHoursBetweenMeals = Math.max(0, Number(next.dietTiming?.minHoursBetweenMeals || 3));
   const nextMealReminderAt = new Date(new Date(completedAt).getTime() + minHoursBetweenMeals * 36e5).toISOString();
   const previousReminder = next.mealReminder || {};
@@ -864,9 +869,15 @@ function recalculateMealReminderFromLatestMeal(next) {
 function latestCompletedMeal(state) {
   const completed = currentDayLog(state).completedMeals || {};
   return Object.entries(completed)
-    .filter(([, record]) => validIso(record?.completedAt))
+    .filter(([mealId, record]) => validIso(record?.completedAt) && hasPlannedMealAfter(state, mealId))
     .map(([mealId, record]) => ({ mealId, completedAt: record.completedAt }))
     .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt))[0] || null;
+}
+
+function hasPlannedMealAfter(state, mealId) {
+  const meals = getMeals(state);
+  const index = meals.findIndex((meal) => meal.id === mealId);
+  return index >= 0 && index < meals.length - 1;
 }
 
 function mealReminderSettingsEnabled(state) {
