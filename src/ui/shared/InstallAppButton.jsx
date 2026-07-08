@@ -14,8 +14,52 @@ function isAndroidDevice() {
   return /Android/i.test(window.navigator.userAgent || "");
 }
 
+function summarizeUserAgent() {
+  return (window.navigator.userAgent || "")
+    .replace(/\s+/g, " ")
+    .slice(0, 120);
+}
+
 function isSecureAppContext() {
   return window.isSecureContext !== false;
+}
+
+function getInitialDiagnostics({ standalone, hasDeferredPrompt }) {
+  return {
+    protocol: window.location.protocol.replace(":", "") || "unknown",
+    isSecureContext: Boolean(window.isSecureContext),
+    serviceWorkerAvailable: "serviceWorker" in navigator,
+    serviceWorkerReady: false,
+    manifestLinkFound: Boolean(document.querySelector("link[rel='manifest']")),
+    displayMode: standalone ? "standalone" : "browser",
+    userAgent: summarizeUserAgent(),
+    hasDeferredPrompt,
+  };
+}
+
+async function readInstallDiagnostics({ standalone, hasDeferredPrompt }) {
+  const serviceWorkerAvailable = "serviceWorker" in navigator;
+  const registration = serviceWorkerAvailable
+    ? await navigator.serviceWorker.getRegistration().catch(() => null)
+    : null;
+
+  return {
+    protocol: window.location.protocol.replace(":", "") || "unknown",
+    isSecureContext: Boolean(window.isSecureContext),
+    serviceWorkerAvailable,
+    serviceWorkerReady: Boolean(navigator.serviceWorker?.controller || registration?.active),
+    manifestLinkFound: Boolean(document.querySelector("link[rel='manifest']")),
+    displayMode: standalone ? "standalone" : "browser",
+    userAgent: summarizeUserAgent(),
+    hasDeferredPrompt,
+  };
+}
+
+async function detectBraveBrowser() {
+  if (navigator.brave?.isBrave) {
+    return navigator.brave.isBrave().catch(() => false);
+  }
+  return /Brave|Brave\//i.test(window.navigator.userAgent || "");
 }
 
 export default function InstallAppButton({ t }) {
@@ -24,6 +68,11 @@ export default function InstallAppButton({ t }) {
   const [showAndroidHelp, setShowAndroidHelp] = useState(false);
   const [showIosHelp, setShowIosHelp] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [isBrave, setIsBrave] = useState(false);
+  const [diagnostics, setDiagnostics] = useState(() => getInitialDiagnostics({
+    standalone: isStandaloneMode(),
+    hasDeferredPrompt: false,
+  }));
   const device = useMemo(() => ({
     android: isAndroidDevice(),
     ios: isIosDevice(),
@@ -54,6 +103,27 @@ export default function InstallAppButton({ t }) {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    readInstallDiagnostics({ standalone, hasDeferredPrompt: Boolean(deferredPrompt) })
+      .then((nextDiagnostics) => {
+        if (active) setDiagnostics(nextDiagnostics);
+      });
+    return () => {
+      active = false;
+    };
+  }, [deferredPrompt, standalone]);
+
+  useEffect(() => {
+    let active = true;
+    detectBraveBrowser().then((result) => {
+      if (active) setIsBrave(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   if (standalone || dismissed) return null;
 
   const installWithPrompt = async () => {
@@ -69,9 +139,46 @@ export default function InstallAppButton({ t }) {
       installWithPrompt();
       return;
     }
-    logInstallDiagnostics({ standalone, hasDeferredPrompt: Boolean(deferredPrompt) });
     setShowAndroidHelp(true);
   };
+
+  const renderDiagnostics = () => (
+    <div className="install-diagnostics" aria-live="polite">
+      {device.android && isBrave && !deferredPrompt && (
+        <p className="install-brave-note">{t("install.braveAndroidManual")}</p>
+      )}
+      <dl>
+        <div>
+          <dt>{t("install.diagnosticSecureContext")}</dt>
+          <dd>{diagnostics.protocol.toUpperCase()} / {diagnostics.isSecureContext ? "isSecureContext=true" : "isSecureContext=false"}</dd>
+        </div>
+        <div>
+          <dt>{t("install.diagnosticServiceWorkerAvailable")}</dt>
+          <dd>{diagnostics.serviceWorkerAvailable ? "true" : "false"}</dd>
+        </div>
+        <div>
+          <dt>{t("install.diagnosticServiceWorkerReady")}</dt>
+          <dd>{diagnostics.serviceWorkerReady ? "true" : "false"}</dd>
+        </div>
+        <div>
+          <dt>{t("install.diagnosticManifest")}</dt>
+          <dd>{diagnostics.manifestLinkFound ? "true" : "false"}</dd>
+        </div>
+        <div>
+          <dt>{t("install.diagnosticDisplayMode")}</dt>
+          <dd>{diagnostics.displayMode}</dd>
+        </div>
+        <div>
+          <dt>{t("install.diagnosticUserAgent")}</dt>
+          <dd>{diagnostics.userAgent || "unknown"}</dd>
+        </div>
+        <div>
+          <dt>{t("install.diagnosticDeferredPrompt")}</dt>
+          <dd>{diagnostics.hasDeferredPrompt ? "true" : "false"}</dd>
+        </div>
+      </dl>
+    </div>
+  );
 
   const renderInstallHelpModal = ({ title, steps, onClose }) => (
     <div className="meal-modal modal-open">
@@ -98,6 +205,7 @@ export default function InstallAppButton({ t }) {
     return (
       <div className="install-app-card">
         <button type="button" onClick={() => setShowIosHelp(true)}>{t("install.iosButton")}</button>
+        {!deferredPrompt && renderDiagnostics()}
         {showIosHelp && renderInstallHelpModal({
           title: t("install.iosTitle"),
           steps: [
@@ -133,6 +241,7 @@ export default function InstallAppButton({ t }) {
       <div className="install-app-card">
         <button type="button" onClick={openAndroidInstall}>{t("install.androidButton")}</button>
         {!deferredPrompt && <p className="settings-help">{t("install.promptUnavailable")}</p>}
+        {!deferredPrompt && renderDiagnostics()}
         {showAndroidHelp && renderInstallHelpModal({
           title: t("install.androidTitle"),
           steps: androidSteps,
@@ -150,24 +259,10 @@ export default function InstallAppButton({ t }) {
     );
   }
 
-  return null;
-}
-
-async function logInstallDiagnostics({ standalone, hasDeferredPrompt }) {
-  const manifestHref = document.querySelector("link[rel='manifest']")?.href || "/manifest.webmanifest";
-  const serviceWorkerRegistered = "serviceWorker" in navigator
-    ? Boolean(await navigator.serviceWorker.getRegistration().catch(() => null))
-    : false;
-  const manifestAccessible = await fetch(manifestHref, { method: "HEAD" })
-    .then((response) => response.ok)
-    .catch(() => false);
-
-  console.info("PWA manual install fallback", {
-    hasInstallPrompt: hasDeferredPrompt,
-    displayMode: standalone ? "standalone" : "browser",
-    isSecureContext: window.isSecureContext,
-    userAgent: window.navigator.userAgent || "",
-    serviceWorkerRegistered,
-    manifestAccessible,
-  });
+  return (
+    <div className="install-app-card">
+      <p className="settings-help">{t("install.promptUnavailable")}</p>
+      {renderDiagnostics()}
+    </div>
+  );
 }
