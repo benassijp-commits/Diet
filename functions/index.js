@@ -20,51 +20,60 @@ const INVALID_TOKEN_CODES = new Set([
 const firestore = getFirestore();
 const messaging = getMessaging();
 
-export const aiProxy = onCall({ secrets: [aiApiKey], cors: true }, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "Sign in before using AI.");
-  }
+export const aiProxy = onCall(
+  {
+    secrets: [aiApiKey],
+    cors: true,
+    timeoutSeconds: 180,
+    memory: "512MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Sign in before using AI.");
+    }
 
-  const messages = validateMessages(request.data?.messages);
-  const temperature = normalizeTemperature(request.data?.temperature);
-  const apiKey = readAiApiKey();
-  if (!apiKey) {
-    throw new HttpsError("failed-precondition", "AI_API_KEY is not configured.");
-  }
+    const messages = validateMessages(request.data?.messages);
+    const temperature = normalizeTemperature(request.data?.temperature);
+    const apiKey = readAiApiKey();
+    if (!apiKey) {
+      throw new HttpsError("failed-precondition", "AI_API_KEY is not configured.");
+    }
 
-  const baseUrl = normalizeBaseUrl(process.env.AI_BASE_URL || DEFAULT_AI_BASE_URL);
-  const model = String(process.env.AI_MODEL || DEFAULT_AI_MODEL).trim() || DEFAULT_AI_MODEL;
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature,
-      response_format: { type: "json_object" },
-    }),
-  });
+    const baseUrl = normalizeBaseUrl(process.env.AI_BASE_URL || DEFAULT_AI_BASE_URL);
+    const model = String(process.env.AI_MODEL || DEFAULT_AI_MODEL).trim() || DEFAULT_AI_MODEL;
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new HttpsError("internal", `AI request failed (${response.status}). ${detail.slice(0, 180)}`);
-  }
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature,
+        response_format: { type: "json_object" },
+      }),
+    });
 
-  const payload = await response.json();
-  const content = payload?.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new HttpsError("internal", "AI response did not include content.");
-  }
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new HttpsError("internal", `AI request failed (${response.status}). ${detail.slice(0, 180)}`);
+    }
 
-  try {
-    return JSON.parse(stripCodeFence(content));
-  } catch {
-    throw new HttpsError("internal", "AI response was not valid JSON.");
-  }
-});
+    const payload = await response.json();
+    const content = payload?.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new HttpsError("internal", "AI response did not include content.");
+    }
+
+    try {
+      return JSON.parse(stripCodeFence(content));
+    } catch {
+      throw new HttpsError("internal", "AI response was not valid JSON.");
+    }
+  },
+);
 
 export const processScheduledNotifications = onSchedule("every 1 minutes", async () => {
   const now = Timestamp.now();

@@ -2829,11 +2829,6 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .meal-actions,
-  .diet-main > .toolbar .toolbar-actions {
-    grid-template-columns: 1fr;
-  }
-
   .meal-actions button {
     min-height: 46px;
   }

@@ -204,3 +204,29 @@ Não usar npm.cmd --prefix functions install neste workspace. Neste ambiente Win
 
 
 Para deploy de Functions, não usar NODE_OPTIONS com tools/firebase-gaxios-token-patch.cjs. Esse patch interfere no discovery HTTP local do Firebase CLI.
+
+
+
+Firebase Production Prerequisites
+
+Projeto prod: dieta-e6bee
+
+APIs necessárias:
+- Cloud Functions API
+- Cloud Build API
+- Artifact Registry API
+- Secret Manager API
+- IAM API
+
+Service account usada no deploy precisa:
+- acessar/criar secrets
+- fazer deploy de Cloud Functions
+- usar Cloud Build
+- escrever no Artifact Registry
+- usar service account runtime
+
+Regras:
+- Deploy de Functions sem NODE_OPTIONS
+- Deploy de Hosting pode usar firebase-gaxios-token-patch
+- Functions dependencies: entrar em functions/ e rodar npm.cmd install
+- Não usar npm.cmd --prefix functions install neste workspace

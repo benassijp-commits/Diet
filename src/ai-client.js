@@ -42,11 +42,16 @@ export async function chatJson({ settings, messages, temperature = 0.1 }) {
 }
 
 async function chatJsonWithProxy({ messages, temperature }) {
-  const aiProxy = httpsCallable(getFunctions(app), "aiProxy");
+  const aiProxy = httpsCallable(getFunctions(app), "aiProxy", {
+    timeout: 240000,
+  });
+
   const response = await aiProxy({ messages, temperature });
+
   if (!response.data || typeof response.data !== "object") {
     throw new Error("A IA respondeu sem conteudo.");
   }
+
   return response.data;
 }
 
